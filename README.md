@@ -92,19 +92,6 @@ curl http://127.0.0.1:8788/v1/chat/completions \
 > 所以**暴露要窄，解析要全** —— 两个关注点是分开实现的
 > （`unionModels()` 管暴露，`aliasModels()` 管解析）。
 
-### ⚠️ 思考型模型的空回复陷阱
-
-默认开启思考的模型（`spark-x2.5`、`Spark-X2-Agent`、`MiniMax-M2.5` 等）在
-`max_tokens` 偏小时，token 会被思考过程吃光，`content` 返回**空串** ——
-看起来像模型坏了，其实不是。以 `spark-x2.5` 为例：
-
-| 调用方式 | 结果 |
-|---|---|
-| 默认 + `max_tokens=64` | `content=''`，reasoning 126 字，用满 64 token |
-| `reasoning_effort: "none"` | `content='收到'`，2 token ✅ |
-| 默认 + `max_tokens=2048` | `content='收到'` + reasoning 113 字 ✅ |
-
-**排查模型可用性时一律带 `reasoning_effort:"none"`**，否则会把好模型误判成坏的。
 
 ## 环境变量
 
@@ -231,15 +218,6 @@ bash deploy/verify_channel.sh       # new-api 侧权威验证
 bash deploy/verify_models.sh        # 逐个模型走容器路径验证
 bash deploy/verify_relay.sh         # 逐个模型走 new-api 真实中继验证
 ```
-
-### ⚠️ 改 new-api 渠道模型时，`abilities` 表必须一起改
-
-new-api 的路由靠 `abilities` 表做「**分组 × 模型 → 渠道**」映射，它是从 `channels`
-派生的但**不会自动同步**。只改 `channels.models` 不改 `abilities`，重启后会报
-`分组 X 下模型 Y 无可用渠道（distributor）`。
-
-**而 `/api/channel/test/<id>` 依然会通过** —— 它按 `test_model` 直连、不走分组路由。
-所以**渠道测试通过 ≠ 客户端能调到**，改完必须跑真实中继。
 
 ## 测试
 
