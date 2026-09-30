@@ -15,21 +15,22 @@ BASE="${ASTUDIO_HOST_URL:-http://172.21.0.1:8788}"
 GRP="${NEWAPI_GROUPS:-openai}"
 REMARK='讯飞 AStudio 反代（多账号池 + 自动签到）'
 
-# 对外模型名 → 上游内部代号。
+# 对外模型名 = 网关实际暴露的「友好名」，**不带前缀**。
 #
-# 为什么带 astudio- 前缀：上游代号（xopglm52）丑但全局唯一；直接改用干净名
-# （glm-5.2）会跟别的渠道撞车 —— new-api 里模型名是全局的，多个渠道可以声明同名，
-# priority 高的先接，请求被路由过去后对方可能返回 404，看起来却像自己坏了。
-# 加前缀既拿到可读名字，又保证全局唯一。
+# 为什么不加 astudio- 前缀：网关自己会把友好名归一成上游代号
+# （canonicalModel，见 go/server.go），new-api 这边不需要 model_mapping，
+# 用户直接用 glm-5.2 这种自然名即可（与上游命名一致）。
 #
-# 上游只认内部代号，所以两个方向都要有：models 用新名，model_mapping 负责改名。
-PAIRS=(
-  'astudio-spark-x2.5:spark-x2.5'
-  'astudio-glm-5.2:xopglm52'
-  'astudio-deepseek-v4-pro:xopdeepseekv4pro0813'
-  'astudio-deepseek-v4-flash:xopdsv4flash0731in'
+# ⚠️ new-api 的模型名是全局的：同名模型可能被别的渠道也声明，按 priority 择优
+# 路由，请求不一定落到本渠道。想独占就把本渠道 priority 抬到高于对方。
+MODELS_LIST=(
+  spark-x2.5
+  glm-5.2
+  deepseek-v4-pro
+  deepseek-v4-flash
 )
-TESTMODEL='astudio-deepseek-v4-flash'
+# test_model 必须是上面这个列表里的名字之一，否则渠道测试恒报「没有可用账号」。
+TESTMODEL='deepseek-v4-flash'
 
 [ -f "$ENVF" ] || { echo "✗ 找不到 $ENVF"; exit 1; }
 [ -f "$DB" ]   || { echo "✗ 找不到 $DB"; exit 1; }
@@ -37,8 +38,8 @@ TESTMODEL='astudio-deepseek-v4-flash'
 KEY="$(grep -oP '(?<=ASTUDIO_API_KEY=).*' "$ENVF")"
 [ -n "$KEY" ] || { echo "✗ .env 里没有 ASTUDIO_API_KEY"; exit 1; }
 
-MODELS="$(printf '%s\n' "${PAIRS[@]}" | cut -d: -f1 | paste -sd, -)"
-MAPPING="{$(printf '%s\n' "${PAIRS[@]}" | awk -F: '{printf "%s\"%s\": \"%s\"", (NR>1?", ":""), $1, $2}')}"
+MODELS="$(printf '%s\n' "${MODELS_LIST[@]}" | paste -sd, -)"
+MAPPING=''
 
 SETTING='{"force_format":false,"thinking_to_content":false,"proxy":"","pass_through_body_enabled":false,"system_prompt":"","system_prompt_override":false}'
 CHINFO='{"is_multi_key":false,"multi_key_size":0,"multi_key_status_list":null,"multi_key_polling_index":0,"multi_key_mode":""}'
@@ -72,13 +73,13 @@ SQL
 fi
 
 # 重建 abilities（分组 × 模型 → 渠道）。不重建就会出现「无可用渠道」。
-echo "→ 同步 abilities（$(printf '%s\n' "${PAIRS[@]}" | wc -l) 模型 × $(echo "$GRP" | tr ',' '\n' | wc -l) 分组）"
+echo "→ 同步 abilities（$(printf '%s\n' "${MODELS_LIST[@]}" | wc -l) 模型 × $(echo "$GRP" | tr ',' '\n' | wc -l) 分组）"
 # 注意：不用 `read -ra <<<`（here-string）——它在部分 shell 下会让脚本提前退出；
 # 用 printf | while read 的 POSIX 写法。
 {
   echo "BEGIN;"
   echo "DELETE FROM abilities WHERE channel_id=$CID;"
-  printf '%s\n' "${PAIRS[@]}" | cut -d: -f1 | while IFS= read -r m; do
+  printf '%s\n' "${MODELS_LIST[@]}" | while IFS= read -r m; do
     printf '%s\n' "$GRP" | tr ',' '\n' | while IFS= read -r g; do
       [ -n "$g" ] || continue
       printf "INSERT INTO abilities (\"group\", model, channel_id, enabled, priority, weight, tag) VALUES ('%s','%s',%s,1,7,0,'');\n" "$g" "$m" "$CID"

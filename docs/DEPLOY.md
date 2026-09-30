@@ -165,7 +165,7 @@ sqlite3 "file:/opt/new-api/data/new-api.db?mode=ro" 'SELECT ...'
 
 ## ⚠️ new-api 里的模型名是全局的
 
-多个渠道可声明同名模型，`priority` 高的先接。把上游代号改成干净名（`glm-5.2`）
+多个渠道可声明同名模型，`priority` 高的先接；网关暴露的友好名（`glm-5.2`）
 **可能撞上别的渠道已有的同名模型** → 请求被路由过去，对方返回 404，
 看起来却像自己坏了。排查：
 
@@ -173,8 +173,19 @@ sqlite3 "file:/opt/new-api/data/new-api.db?mode=ro" 'SELECT ...'
 SELECT id,name,priority,models FROM channels WHERE status=1 AND models LIKE '%glm-5.2%';
 ```
 
-对策是对外名加前缀（`astudio-glm-5.2`）保证全局唯一，再用 `model_mapping`
-映回上游代号。
+想独占就把本渠道 `priority` 抬到高于对方；想并存可给对外名加前缀
+（`astudio-glm-5.2`）并在 `model_mapping` 里映射回友好名。
+
+### `test_model` 必须落在网关暴露的名字里
+
+`new-api` 的 `/api/channel/test/<id>` 按 `test_model` 直连，**不走分组路由**，
+所以它跟真实调用是**两条路**：
+
+- `test_model` 写得对、`abilities` 没同步 → 渠道测试**过**，客户端却调不到
+- `test_model` 写成不存在的名字（例如网关暴露 `glm-5.2`，这里填 `astudio-glm-5.2`）
+  → 渠道测试**恒报** `没有可用账号`，看着像服务挂了，实际真实调用完全正常
+
+两边都正常才算真的通。
 
 ## 运营关注
 

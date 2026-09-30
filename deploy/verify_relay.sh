@@ -3,7 +3,7 @@
 set -uo pipefail
 DB="${NEWAPI_DB:-/opt/new-api/data/new-api.db}"
 API="${NEWAPI_BASE:-http://127.0.0.1:3001}/v1/chat/completions"
-MODELS=(astudio-spark-x2.5 astudio-glm-5.2 astudio-deepseek-v4-pro astudio-deepseek-v4-flash)
+MODELS=(spark-x2.5 glm-5.2 deepseek-v4-pro deepseek-v4-flash)
 OUT="${RELAY_OUT:-/tmp/relay}"
 mkdir -p "$OUT"; rm -f "$OUT"/*.json
 
