@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"testing"
+	"time"
 )
 
 // ---------------------------------------------------------------------------
@@ -63,7 +64,8 @@ func newCheckinPool(t *testing.T, srv *httptest.Server) (*Pool, *Ledger, string)
 // 签到失败时绝不能占掉当日名额，否则当天再也不会重试。
 func TestCheckinFailureDoesNotClaimTheDay(t *testing.T) {
 	p, l, id := newCheckinPool(t, poisonServer(t, false))
-	day := "2026-10-01"
+	// 用实现同源的日期，别硬编码 —— 否则测试结果会随跑在哪台时区的机器上而变。
+	day := CheckinDay(time.Now())
 
 	p.CheckinAll(context.Background(), false, false, 1)
 
@@ -75,12 +77,38 @@ func TestCheckinFailureDoesNotClaimTheDay(t *testing.T) {
 // 签到成功才占名额。
 func TestCheckinSuccessClaimsTheDay(t *testing.T) {
 	p, l, id := newCheckinPool(t, poisonServer(t, true))
-	day := "2026-10-01"
+	day := CheckinDay(time.Now())
 
 	p.CheckinAll(context.Background(), false, false, 1)
 
 	if !l.CheckinDone(id, day) {
 		t.Fatal("init-app 成功后应占掉当日名额，避免重复签到")
+	}
+}
+
+// 签到的「一天」必须按上游时区（北京时间）算，不能跟宿主时区走。
+// 回归：早先直接用 time.Now().Format，在 UTC 容器里北京时间 00:00–08:00
+// 会被算成前一天，与上游按天幂等窗口错位。
+func TestCheckinDayUsesUpstreamTimezone(t *testing.T) {
+	// 北京时间 2026-10-01 03:00 == UTC 2026-09-30 19:00
+	utc := time.Date(2026, 9, 30, 19, 0, 0, 0, time.UTC)
+	if got := CheckinDay(utc); got != "2026-10-01" {
+		t.Fatalf("北京时间 10-01 03:00 应算作 2026-10-01，实得 %q（时区没钉死）", got)
+	}
+
+	// 同一个时刻，在 UTC 与在任意宿主时区下必须得到同一个日期串
+	day := CheckinDay(utc)
+	for _, tz := range []*time.Location{time.UTC, CheckinTZ} {
+		if got := CheckinDay(utc.In(tz)); got != day {
+			t.Fatalf("同一时刻换个时区表示就变日期：%q vs %q", got, day)
+		}
+	}
+
+	// 北京时间跨过午夜即换天
+	before := time.Date(2026, 9, 30, 23, 30, 0, 0, CheckinTZ)
+	after := time.Date(2026, 10, 1, 0, 30, 0, 0, CheckinTZ)
+	if CheckinDay(before) != "2026-09-30" || CheckinDay(after) != "2026-10-01" {
+		t.Fatalf("北京时间午夜应换天：%q / %q", CheckinDay(before), CheckinDay(after))
 	}
 }
 

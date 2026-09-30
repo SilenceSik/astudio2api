@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from datetime import datetime
+from datetime import datetime, timedelta, timezone
 from pathlib import Path
 from typing import Any
 
@@ -75,6 +75,20 @@ BUILTIN_MODELS: list[dict[str, Any]] = [
 
 # 标准集 id 快照，供对外清单过滤用。
 STANDARD_MODEL_IDS = {m["id"] for m in BUILTIN_MODELS}
+
+# 签到「一天」的判定时区 = 上游时区（北京时间）。
+#
+# 不能用宿主本地时区：上游按北京时间算日界，若宿主是 UTC（容器镜像默认就是
+# UTC），北京时间 00:00–08:00 会被算成前一天，与上游的按天幂等窗口错位 ——
+# 该区间内签到会被判成「昨日已领」而跳过。国内机器是 CST 时看不出问题，
+# 跑在 UTC 容器里就出错，所以这里显式钉死（与 Go 版 CheckinTZ 对齐）。
+CHECKIN_TZ = timezone(timedelta(hours=8))
+
+
+def checkin_day(now: datetime | None = None) -> str:
+    """把时刻折算成上游口径的日期串（YYYY-MM-DD）。"""
+    t = now or datetime.now(CHECKIN_TZ)
+    return t.astimezone(CHECKIN_TZ).strftime("%Y-%m-%d")
 
 
 def log(msg: str, *args: Any) -> None:

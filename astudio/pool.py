@@ -27,6 +27,7 @@ from .consts import (
     MODELS_TTL,
     STICKY_MAX,
     STICKY_TTL,
+    checkin_day,
     log,
     multiplier_is_free,
 )
@@ -339,8 +340,7 @@ class Pool:
 
         force=True 时忽略当日幂等，强制再跑一轮（对齐 Go 版语义）。
         """
-        from datetime import datetime
-        day = datetime.now().strftime("%Y-%m-%d")
+        day = checkin_day()
         sem = asyncio.Semaphore(max(1, concurrency))
         results: list[dict[str, Any]] = []
 

@@ -8,12 +8,15 @@ COPY go/*.go ./
 RUN CGO_ENABLED=0 go build -trimpath -ldflags "-s -w" -o /out/astudio2api .
 
 FROM alpine:3.20
-RUN apk add --no-cache ca-certificates && \
+# tzdata：让容器有真实时区库，日志时间与上游（北京时间）对得上。
+# 签到日界在代码里已显式按上游时区算，不依赖这里（见 CheckinTZ）。
+RUN apk add --no-cache ca-certificates tzdata && \
     adduser -D -u 10001 astudio && \
     mkdir -p /data/accounts && chown -R astudio:astudio /data
 COPY --from=build /out/astudio2api /usr/local/bin/astudio2api
 USER astudio
-ENV ASTUDIO_ACCOUNTS_DIR=/data/accounts \
+ENV TZ=Asia/Shanghai \
+    ASTUDIO_ACCOUNTS_DIR=/data/accounts \
     ASTUDIO_STATE_PATH=/data/state.json \
     ASTUDIO_HOST=0.0.0.0 \
     ASTUDIO_PORT=8788

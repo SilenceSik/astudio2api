@@ -532,7 +532,7 @@ func (p *Pool) CheckinAll(ctx context.Context, dry, force bool, concurrency int)
 	if concurrency < 1 {
 		concurrency = 2
 	}
-	day := time.Now().Format("2006-01-02")
+	day := CheckinDay(time.Now())
 	slots := p.Slots()
 	out := make([]CheckinAccountResult, len(slots))
 	var wg sync.WaitGroup

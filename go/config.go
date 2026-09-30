@@ -243,6 +243,20 @@ func liveSessionCandidates(cfg Config) []string {
 // 小工具
 // ---------------------------------------------------------------------------
 
+// CheckinTZ 是签到「一天」的判定时区。
+//
+// 必须与上游对齐，不能用宿主本地时区：上游按北京时间算日界，若宿主是 UTC
+// （容器镜像默认就是 UTC），北京时间 00:00–08:00 会被算成前一天，
+// 与上游的按天幂等窗口错位 —— 表现为该区间内签到被判成「昨日已领」而跳过，
+// 或同一天被上游认作两天。本机/国内服务器是 CST 时看不出问题，
+// 一旦跑在 UTC 容器里就出错，所以这里显式钉死。
+var CheckinTZ = time.FixedZone("CST", 8*3600)
+
+// CheckinDay 把时刻折算成上游口径的日期串（YYYY-MM-DD）。
+func CheckinDay(t time.Time) string {
+	return t.In(CheckinTZ).Format("2006-01-02")
+}
+
 func logf(format string, args ...any) {
 	fmt.Printf("[%s] %s\n", time.Now().Format("15:04:05"), fmt.Sprintf(format, args...))
 }

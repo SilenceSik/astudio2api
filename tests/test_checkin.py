@@ -167,3 +167,34 @@ def test_claim_is_empty_operation():
     assert "client-download-reward/claim" in " ".join(fake.calls), "应打扫弹窗"
     assert fake.granted == before, "claim 不该发分（它是空操作）"
     assert res["gained"] == 0, f"同日重签应 +0，实得 {res['gained']}"
+
+
+# ---------------------------------------------------------------------------
+# 签到日界时区
+# ---------------------------------------------------------------------------
+
+def test_checkin_day_uses_upstream_timezone():
+    """签到的「一天」必须按上游时区（北京时间）算，不能跟宿主时区走。
+
+    回归：早先直接用 datetime.now()，在 UTC 容器（镜像默认就是 UTC）里，
+    北京时间 00:00–08:00 会被算成前一天，与上游按天幂等窗口错位。
+    """
+    from datetime import datetime, timezone
+
+    from astudio.consts import CHECKIN_TZ, checkin_day
+
+    # 北京时间 2026-10-01 03:00 == UTC 2026-09-30 19:00
+    utc = datetime(2026, 9, 30, 19, 0, tzinfo=timezone.utc)
+    assert checkin_day(utc) == "2026-10-01", "北京时间 10-01 03:00 应算作 2026-10-01"
+
+    # 同一时刻换任何时区表示，结果必须一致
+    assert checkin_day(utc.astimezone(CHECKIN_TZ)) == checkin_day(utc)
+
+    # 北京时间跨过午夜即换天
+    before = datetime(2026, 9, 30, 23, 30, tzinfo=CHECKIN_TZ)
+    after = datetime(2026, 10, 1, 0, 30, tzinfo=CHECKIN_TZ)
+    assert checkin_day(before) == "2026-09-30"
+    assert checkin_day(after) == "2026-10-01"
+
+    # 不传参时应能直接给出当天（不应抛错）
+    assert len(checkin_day()) == 10

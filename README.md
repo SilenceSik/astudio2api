@@ -177,6 +177,8 @@ curl http://127.0.0.1:8788/v1/chat/completions \
   一次发两笔：常规每日登录积分（体验版 100 / 标准版 200 / 高级版 400）+
   活动期加成（例如国庆额外 5000 星火积分）
 - 计量用 **`totalAmount`（累计发放，单调递增）**，不是 `totalBalance`（会被调用消耗）
+- **「一天」按北京时间（上游时区）算**，不跟随宿主时区 —— 跑在 UTC 容器里也不会
+  在北京时间 00:00–08:00 把签到算成前一天
 - 手动触发：`POST /admin/checkin?dry=true` / `?force=true`
 
 > **易错点（重要）**：签到**不是**走 `client-popups/pending` → `client-popups/complete`。
