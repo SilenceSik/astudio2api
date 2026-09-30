@@ -1,0 +1,36 @@
+# ── 凭据与运行期状态：绝不提交 ────────────────────────────────────────
+# 账号文件内含 ssoSessionId / modelBearerToken，还有手机号
+accounts/
+# 台账：含上游 api_key 与积分快照
+state.json
+.env
+.env.*
+!.env.example
+*.token
+*.key
+secrets.*
+
+# ── 构建产物 ──────────────────────────────────────────────────────────
+dist/
+astudio2api
+astudio2api-linux-amd64
+astudio2api-darwin-*
+astudio2api-windows-*
+go/astudio2api
+go/astudio2api.exe
+*.exe
+
+# ── Python ────────────────────────────────────────────────────────────
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.venv/
+venv/
+*.egg-info/
+
+# ── 杂项 ──────────────────────────────────────────────────────────────
+*.log
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/

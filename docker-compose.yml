@@ -1,0 +1,22 @@
+services:
+  astudio2api:
+    build: .
+    image: astudio2api:local
+    # 访问密钥等配置放 .env（从 .env.example 复制），不要写进这个文件
+    env_file:
+      - .env
+    # 容器内必须绑 0.0.0.0，否则宿主/其它容器访问不到
+    environment:
+      ASTUDIO_HOST: 0.0.0.0
+      ASTUDIO_PORT: "8788"
+      ASTUDIO_ACCOUNTS_DIR: /data/accounts
+      ASTUDIO_STATE_PATH: /data/state.json
+    # 默认只暴露给本机；要让别的容器（如 new-api）访问，
+    # 把下面一行换成 "8788:8788" 并自行用防火墙/安全组限制来源。
+    ports:
+      - "127.0.0.1:8788:8788"
+    volumes:
+      # 账号与台账都在这里，务必不要提交进 git
+      - ./accounts:/data/accounts
+      - ./state.json:/data/state.json
+    restart: unless-stopped
