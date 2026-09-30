@@ -184,6 +184,6 @@ SELECT id,name,priority,models FROM channels WHERE status=1 AND models LIKE '%gl
   `accounts login` 或重新导入会话；池子会继续用其它账号服务。
 - **每日收益靠自动签到**：网关内置每小时兜底循环，按 `(账号, 日期)` 幂等，
   重复调用不会重复领。真正的发分接口是 `POST tenant-app/v2/init-app`
-  （见 README「自动签到」一节，那里记着一个曾经很贵的误判）。
+  （见 README「自动签到」一节，那里记了一个容易踩的误判）。
 - **健康度排查**：`GET /health` 看槽位状态；`POST /admin/sync` 会逐账号报
   真实上游错误，是判断「账号是不是真活着」最快的一条路。

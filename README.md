@@ -4,7 +4,15 @@
 
 协议逆向自 AStudio 3.4.4 客户端安装包（Electron + NSIS），**无需抓包、无需修改客户端**。
 
-> 结构参考 [maiphucgiang/codebuddy2api](https://github.com/maiphucgiang/codebuddy2api) 的多账号池 + 自动签到设计。
+> **设计参考**：[maiphucgiang/codebuddy2api](https://github.com/maiphucgiang/codebuddy2api)（MIT）——
+> 多账号池、积分台账与自动签到的架构思路来自该项目。本项目面向讯飞 AStudio，
+> 协议、模型与账号体系均为独立实现，与该项目无代码依赖关系。
+
+## 引用的项目
+
+| 项目 | 许可 | 参考了什么 |
+|---|---|---|
+| [maiphucgiang/codebuddy2api](https://github.com/maiphucgiang/codebuddy2api) | MIT | 多账号池调度、积分台账、自动签到的整体设计 |
 
 ## 特性
 
@@ -88,7 +96,7 @@ curl http://127.0.0.1:8788/v1/chat/completions \
 
 默认开启思考的模型（`spark-x2.5`、`Spark-X2-Agent`、`MiniMax-M2.5` 等）在
 `max_tokens` 偏小时，token 会被思考过程吃光，`content` 返回**空串** ——
-看起来像模型坏了，其实不是。实测 `spark-x2.5`：
+看起来像模型坏了，其实不是。以 `spark-x2.5` 为例：
 
 | 调用方式 | 结果 |
 |---|---|
@@ -158,8 +166,9 @@ curl http://127.0.0.1:8788/v1/chat/completions \
 失败处理：**401 冷却账号 10 分钟**；**403 只冷却该模型 30 分钟**；429 冷却该模型
 60 秒；5xx 冷却 30 秒。单次请求最多换 3 个账号重试。
 
-> 曾把 403 当账号级失效处理，结果一个未订购的模型把账号上其它可用模型一起拖死 —— 
-> 已改为模型级冷却。
+> 为什么 403 要按模型级而非账号级冷却：403 是「该账号未订购此模型」，
+> 账号上其它模型仍然可用。若当账号级失效把账号整体下线，一个未订购的模型
+> 就会拖死该账号上所有可用模型。
 
 ## 自动签到
 
@@ -204,8 +213,8 @@ curl http://127.0.0.1:8788/v1/chat/completions \
 
 ## 部署
 
-见 [docs/DEPLOY.md](docs/DEPLOY.md)。`deploy/` 下的脚本全部从环境变量取值，
-仓库里不含任何主机名与路径：
+见 [docs/DEPLOY.md](docs/DEPLOY.md)。`deploy/` 下的脚本都从环境变量取值，
+默认值只是按推荐部署布局给的推测，路径不同时用环境变量覆盖即可：
 
 ```bash
 export ASTUDIO_SSH_HOST=<你的服务器>
@@ -213,8 +222,8 @@ export ASTUDIO_HOST_URL=http://<docker 网关 IP>:8788
 export NEWAPI_DB=/opt/new-api/data/new-api.db
 bash deploy/register_channel.sh     # 注册/更新 new-api 渠道（幂等）
 bash deploy/verify_channel.sh       # new-api 侧权威验证
-bash deploy/verify_models.sh        # 逐个模型走容器路径实测
-bash deploy/verify_relay.sh         # 逐个模型走 new-api 真实中继实测
+bash deploy/verify_models.sh        # 逐个模型走容器路径验证
+bash deploy/verify_relay.sh         # 逐个模型走 new-api 真实中继验证
 ```
 
 ### ⚠️ 改 new-api 渠道模型时，`abilities` 表必须一起改
@@ -259,3 +268,8 @@ python astudio2api.py doctor  # 端到端五链路自检（需真实账号）
 ## License
 
 MIT，见 [LICENSE](LICENSE)。
+
+## Community
+
+感谢 [LINUX DO](https://linux.do) 社区提供开放友好的技术讨论平台。
+

@@ -2,7 +2,7 @@
 # -*- coding: utf-8 -*-
 """从浏览器地址栏 URL 一键落地账号，可选推到远端网关。
 
-主人登录 https://passport.xfyun.cn/ 后，地址栏会出现：
+在 https://passport.xfyun.cn/ 登录完成后，地址栏会出现：
 
     https://www.xfyun.cn/?ssoSessionId=<uuid>&account_id=<digits>
 
@@ -106,7 +106,7 @@ def scp(local: Path) -> subprocess.CompletedProcess:
 def resolve_name(accounts_dir: Path, acct: str) -> tuple[str, str]:
     """决定账号文件名。返回 (最终文件名, 说明)。
 
-    规则：默认 `acct-<accountId 前4位>`（与既有 acct-2204 / acct-9587 一致）；
+    规则：默认 `acct-<accountId 前4位>`（与既有账号文件一致）；
     但若目录里已有**同一 accountId** 的文件，就续用原文件名 —— 同一账号在池子里
     出现两份凭据会让它的调度权重翻倍。
     """

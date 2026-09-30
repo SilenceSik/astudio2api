@@ -22,24 +22,24 @@ _spec.loader.exec_module(m)
 # 解析
 # ---------------------------------------------------------------------------
 
-GOOD = "https://www.xfyun.cn/?ssoSessionId=11111111-2222-3333-4444-555555555555&account_id=22040000001"
+GOOD = "https://www.xfyun.cn/?ssoSessionId=11111111-2222-3333-4444-555555555555&account_id=73010000001"
 
 
 def test_parse_typical():
     sid, acct = m.parse(GOOD)
     assert sid == "11111111-2222-3333-4444-555555555555"
-    assert acct == "22040000001"
+    assert acct == "73010000001"
 
 
 def test_parse_strips_quotes():
     sid, acct = m.parse('"%s"' % GOOD)
-    assert acct == "22040000001"
+    assert acct == "73010000001"
 
 
 def test_parse_order_independent():
     sid, acct = m.parse(
-        "https://x.cn/?account_id=22040000001&ssoSessionId=11111111-2222-3333-4444-555555555555")
-    assert acct == "22040000001"
+        "https://x.cn/?account_id=73010000001&ssoSessionId=11111111-2222-3333-4444-555555555555")
+    assert acct == "73010000001"
 
 
 def test_parse_rejects_missing_account():
@@ -66,42 +66,42 @@ def _acct_file(d: Path, stem: str, account_id: str) -> None:
 
 
 def test_name_uses_first_four_not_last_four(tmp_path):
-    # 回归：曾用尾 4 位，导致 acct-2204 与 acct-7969 是同一账号的两份凭据
-    name, note = m.resolve_name(tmp_path, "22040000001")
-    assert name == "acct-2204", name
+    # 命名必须取 accountId 前 4 位：取后 4 位会让同一账号生成两份凭据
+    name, note = m.resolve_name(tmp_path, "73010000001")
+    assert name == "acct-7301", name
     assert note == ""
 
 
 def test_name_reuses_alias_file_for_same_account(tmp_path):
     # 目录里已有别名（名字≠默认规则），必须续用原文件，避免同一账号两份凭据
-    _acct_file(tmp_path, "acct-legacy", "22040000001")
-    name, note = m.resolve_name(tmp_path, "22040000001")
+    _acct_file(tmp_path, "acct-legacy", "73010000001")
+    name, note = m.resolve_name(tmp_path, "73010000001")
     assert name == "acct-legacy"
     assert "续用" in note
 
 
 def test_name_same_as_default_is_silent(tmp_path):
     # 已有文件叫的就是默认名 → 续用它，但不必提示
-    _acct_file(tmp_path, "acct-2204", "22040000001")
-    name, note = m.resolve_name(tmp_path, "22040000001")
-    assert name == "acct-2204"
+    _acct_file(tmp_path, "acct-7301", "73010000001")
+    name, note = m.resolve_name(tmp_path, "73010000001")
+    assert name == "acct-7301"
     assert note == ""
 
 
 def test_name_no_duplicate_for_other_account(tmp_path):
-    _acct_file(tmp_path, "acct-2204", "22040000001")
-    name, note = m.resolve_name(tmp_path, "95870000002")
-    assert name == "acct-9587"
+    _acct_file(tmp_path, "acct-7301", "73010000001")
+    name, note = m.resolve_name(tmp_path, "84020000002")
+    assert name == "acct-8402"
     assert note == ""
 
 
 def test_name_survives_corrupt_files(tmp_path):
     (tmp_path / "broken.json").write_text("{not json", encoding="utf-8")
-    _acct_file(tmp_path, "acct-2204", "22040000001")
-    name, _ = m.resolve_name(tmp_path, "22040000001")
-    assert name == "acct-2204"
+    _acct_file(tmp_path, "acct-7301", "73010000001")
+    name, _ = m.resolve_name(tmp_path, "73010000001")
+    assert name == "acct-7301"
 
 
 def test_name_on_missing_dir(tmp_path):
-    name, note = m.resolve_name(tmp_path / "nope", "22040000001")
-    assert name == "acct-2204" and note == ""
+    name, note = m.resolve_name(tmp_path / "nope", "73010000001")
+    assert name == "acct-7301" and note == ""

@@ -39,7 +39,7 @@ func ssoMock(t *testing.T, captcha bool, wantAccount, wantPwd string) *httptest.
 				return
 			}
 			_, _ = w.Write([]byte(`{"flag":true,"code":0,"desc":"成功","data":` +
-				`{"ssoSessionId":"sid-abc","account_id":"22050000003"}}`))
+				`{"ssoSessionId":"sid-abc","account_id":"65030000003"}}`))
 		default:
 			t.Errorf("意外的路径: %s", r.URL.Path)
 			_, _ = w.Write([]byte(`{"flag":false,"code":20003,"desc":"请求地址错误"}`))
@@ -58,23 +58,23 @@ func withSSOBase(t *testing.T, srv *httptest.Server) {
 }
 
 func TestSSOLoginSucceeds(t *testing.T) {
-	srv := ssoMock(t, false, "22050000003", "pw-correct")
+	srv := ssoMock(t, false, "65030000003", "pw-correct")
 	withSSOBase(t, srv)
 
-	sid, acct, err := SSOLogin(context.Background(), srv.Client(), "22050000003", "pw-correct")
+	sid, acct, err := SSOLogin(context.Background(), srv.Client(), "65030000003", "pw-correct")
 	if err != nil {
 		t.Fatalf("应登录成功，实得 %v", err)
 	}
-	if sid != "sid-abc" || acct != "22050000003" {
+	if sid != "sid-abc" || acct != "65030000003" {
 		t.Fatalf("凭证解析错：sid=%q acct=%q", sid, acct)
 	}
 }
 
 func TestSSOLoginWrongPasswordSurfacesServerMessage(t *testing.T) {
-	srv := ssoMock(t, false, "22050000003", "pw-correct")
+	srv := ssoMock(t, false, "65030000003", "pw-correct")
 	withSSOBase(t, srv)
 
-	_, _, err := SSOLogin(context.Background(), srv.Client(), "22050000003", "wrong")
+	_, _, err := SSOLogin(context.Background(), srv.Client(), "65030000003", "wrong")
 	if err == nil {
 		t.Fatal("密码错应报错")
 	}
@@ -85,10 +85,10 @@ func TestSSOLoginWrongPasswordSurfacesServerMessage(t *testing.T) {
 
 func TestSSOLoginRefusesWhenCaptchaRequired(t *testing.T) {
 	// 需要滑块时必须明确拒绝，不能硬闯，也不能把它当密码错。
-	srv := ssoMock(t, true, "22050000003", "pw-correct")
+	srv := ssoMock(t, true, "65030000003", "pw-correct")
 	withSSOBase(t, srv)
 
-	_, _, err := SSOLogin(context.Background(), srv.Client(), "22050000003", "pw-correct")
+	_, _, err := SSOLogin(context.Background(), srv.Client(), "65030000003", "pw-correct")
 	if err == nil {
 		t.Fatal("要求滑块时应拒绝")
 	}
@@ -111,7 +111,7 @@ func TestSSOLoginRejectsEmpty(t *testing.T) {
 
 func TestLoginAndAddAccountWritesCredentialWithBearer(t *testing.T) {
 	// SSO mock
-	sso := ssoMock(t, false, "22050000003", "pw")
+	sso := ssoMock(t, false, "65030000003", "pw")
 	withSSOBase(t, sso)
 
 	// AStudio 上游 mock：验活时下发 api_key（就是准入 bearer）
@@ -127,12 +127,12 @@ func TestLoginAndAddAccountWritesCredentialWithBearer(t *testing.T) {
 	dir := t.TempDir()
 	cfg := Config{AccountsDir: filepath.Join(dir, "accounts"), StatePath: filepath.Join(dir, "s.json")}
 
-	a, err := LoginAndAddAccount(context.Background(), cfg, studio.Client(), "22050000003", "pw", "", false)
+	a, err := LoginAndAddAccount(context.Background(), cfg, studio.Client(), "65030000003", "pw", "", false)
 	if err != nil {
 		t.Fatalf("应成功，实得 %v", err)
 	}
-	if a.Name != "acct-2205" {
-		t.Fatalf("命名应为 acct-2205，实得 %q", a.Name)
+	if a.Name != "acct-6503" {
+		t.Fatalf("命名应为 acct-6503，实得 %q", a.Name)
 	}
 	if a.Bearer() != "bearer-from-upstream" {
 		t.Fatalf("必须落盘上游下发的 bearer，实得 %q", a.Bearer())
@@ -163,7 +163,7 @@ func TestLoginAndAddAccountWritesCredentialWithBearer(t *testing.T) {
 
 func TestLoginAndAddAccountRefusesWithoutBearer(t *testing.T) {
 	// 上游不给 api_key 时不能入池（池子会过滤掉缺 bearer 的账号）。
-	sso := ssoMock(t, false, "22050000003", "pw")
+	sso := ssoMock(t, false, "65030000003", "pw")
 	withSSOBase(t, sso)
 
 	studio := newTestServer(t, http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -177,7 +177,7 @@ func TestLoginAndAddAccountRefusesWithoutBearer(t *testing.T) {
 	dir := t.TempDir()
 	cfg := Config{AccountsDir: filepath.Join(dir, "accounts"), StatePath: filepath.Join(dir, "s.json")}
 
-	if _, err := LoginAndAddAccount(context.Background(), cfg, studio.Client(), "22050000003", "pw", "", false); err == nil {
+	if _, err := LoginAndAddAccount(context.Background(), cfg, studio.Client(), "65030000003", "pw", "", false); err == nil {
 		t.Fatal("没有 bearer 时应拒绝入池")
 	}
 	if entries, _ := os.ReadDir(cfg.AccountsDir); len(entries) != 0 {

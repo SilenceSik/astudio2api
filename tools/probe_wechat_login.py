@@ -8,6 +8,7 @@
 import json
 import secrets
 import urllib.error
+import urllib.parse
 import urllib.request
 
 BASE = "https://sso.xfyun.cn/"
@@ -36,8 +37,6 @@ def call(path: str, params: dict | None = None) -> tuple[int, str]:
     except Exception as e:  # noqa: BLE001
         return -1, f"{type(e).__name__}: {e}"
 
-
-import urllib.parse  # noqa: E402
 
 fd = new_fd()
 print(f"生成 fd = {fd}\n")
