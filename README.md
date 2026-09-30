@@ -215,8 +215,12 @@ curl http://127.0.0.1:8788/v1/chat/completions \
 
 ## 部署
 
-见 [docs/DEPLOY.md](docs/DEPLOY.md)。`deploy/` 下的脚本都从环境变量取值，
-默认值只是按推荐部署布局给的推测，路径不同时用环境变量覆盖即可：
+见 [docs/DEPLOY.md](docs/DEPLOY.md)（从零到接进 new-api 的完整步骤）。
+**维护 / 改动影响面 / 排障**见 [docs/MAINTENANCE.md](docs/MAINTENANCE.md) ——
+改任何东西之前值得先扫一眼它的「改动影响面」表，这个项目的坑基本都在「只改了一处」。
+
+`deploy/` 下的脚本都从环境变量取值，默认值只是按推荐部署布局给的推测，
+路径不同时用环境变量覆盖即可：
 
 ```bash
 export ASTUDIO_SSH_HOST=<你的服务器>
