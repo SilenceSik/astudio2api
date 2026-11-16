@@ -532,6 +532,11 @@ func cmdDoctor(cfg Config) int {
 func pickProbeModel(p *Pool, s *Slot) string {
 	skip := map[string]bool{"astronclaw-auto": true, "spark-x": true}
 	for _, m := range p.usableModels(s) {
+		// spark 系（spark-x / xsparkx2agent / spark-x2.5）自己的接口不在 chat 标准通道上，
+		// 拿它冒烟会把「通道不认」错报成渠道故障。
+		if strings.Contains(strings.ToLower(m.ID), "spark") {
+			continue
+		}
 		if !skip[m.ID] && !strings.Contains(m.BaseURL, "spark-api-open") {
 			return m.ID
 		}

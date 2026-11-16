@@ -43,6 +43,24 @@ func contentText(v any) string {
 	}
 }
 
+// anySlice 把任意 slice 形态统一成 []any。
+// JSON 解码得到 []any，而 Go 内部调用方常直接构造 []map[string]any —— 只认前者会
+// 让 messages/tools 被当成空（上游随即 400 invalid_prompt）。
+func anySlice(v any) []any {
+	switch s := v.(type) {
+	case []any:
+		return s
+	case []map[string]any:
+		out := make([]any, len(s))
+		for i := range s {
+			out[i] = s[i]
+		}
+		return out
+	default:
+		return nil
+	}
+}
+
 // chatToResponses 把 OpenAI chat 请求体转成 Responses 请求体。
 func chatToResponses(body map[string]any) map[string]any {
 	out := map[string]any{}
@@ -52,7 +70,7 @@ func chatToResponses(body map[string]any) map[string]any {
 	var instructions []string
 	var input []any
 
-	msgs, _ := body["messages"].([]any)
+	msgs := anySlice(body["messages"])
 	for _, raw := range msgs {
 		m, ok := raw.(map[string]any)
 		if !ok {
@@ -73,7 +91,7 @@ func chatToResponses(body map[string]any) map[string]any {
 				"output":  text,
 			})
 		case "assistant":
-			if calls, ok := m["tool_calls"].([]any); ok {
+			if calls := anySlice(m["tool_calls"]); len(calls) > 0 {
 				for _, rc := range calls {
 					tc, _ := rc.(map[string]any)
 					if tc == nil {
@@ -114,7 +132,7 @@ func chatToResponses(body map[string]any) map[string]any {
 			out[k] = v
 		}
 	}
-	if ts, ok := body["tools"].([]any); ok && len(ts) > 0 {
+	if ts := anySlice(body["tools"]); len(ts) > 0 {
 		var tools []any
 		for _, raw := range ts {
 			t, _ := raw.(map[string]any)
@@ -386,9 +404,17 @@ func streamResponsesToChat(src io.Reader, model string, w io.Writer) error {
 }
 
 // chatViaResponses 用 Responses 通道完成一次 chat 请求，返回 chat 形状的响应。
+//
+// 只有走 maas-api 的模型才受 Coding Plan 通道覆盖；同一个账号的 spark 系列模型
+// 走 spark-api-open（自己的接口），把它们也送进 model-gateway 会 404。
 func (u *Upstream) chatViaResponses(ctx context.Context, body map[string]any) (*http.Response, error) {
-	conv := chatToResponses(body)
 	mid := fmt.Sprint(body["model"])
+	entry := u.Resolve(mid)
+	if !codingPlanCovered(entry.BaseURL) {
+		url, key := u.target(body, "/chat/completions")
+		return u.doJSON(ctx, url, key, body)
+	}
+	conv := chatToResponses(body)
 	base := u.responsesBaseURL()
 	url := strings.TrimRight(base, "/") + "/responses"
 	key := u.account.Bearer()
@@ -396,6 +422,13 @@ func (u *Upstream) chatViaResponses(ctx context.Context, body map[string]any) (*
 	resp, err := u.doJSON(ctx, url, key, conv)
 	if err != nil {
 		return nil, err
+	}
+	// model-gateway 不认的模型（如 spark 系）会回 404：退回该模型自己的 chat 通道再打一次。
+	// 用状态码自适应，比维护一份「哪些模型受 Coding Plan 覆盖」的名单可靠。
+	if resp.StatusCode == 404 {
+		resp.Body.Close()
+		chatURL, chatKey := u.target(body, "/chat/completions")
+		return u.doJSON(ctx, chatURL, chatKey, body)
 	}
 	if resp.StatusCode >= 400 {
 		return resp, nil
@@ -437,6 +470,13 @@ func (u *Upstream) responsesBaseURL() string {
 		return v
 	}
 	return "https://astronstudio-api-volces-prod.xf-yun.com/model-gateway/v1"
+}
+
+// codingPlanCovered 判断某个模型的 base_url 是否落在 Coding Plan 覆盖的通道上。
+// configs 下发的 MaaS 地址（maas-api…）才是 Coding Plan 能接管的；
+// spark-api-open 等其它通道有自己的 chat 接口，不能转 responses。
+func codingPlanCovered(baseURL string) bool {
+	return strings.Contains(baseURL, "maas-api.cn-huabei-1.xf-yun.com")
 }
 
 // responsesMode 账号是否走 Responses 通道。

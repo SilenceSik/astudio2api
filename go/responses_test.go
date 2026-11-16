@@ -207,3 +207,37 @@ func TestStreamIncompleteMapsToLength(t *testing.T) {
 		t.Fatalf("incomplete should map to length: %s", b.String())
 	}
 }
+
+func TestChatToResponsesTypedSlices(t *testing.T) {
+	// 内部调用方（doctor 探针）直接构造 []map[string]any，若只认 []any 会转出空 input。
+	body := map[string]any{
+		"model":    "glm-5.2",
+		"messages": []map[string]any{{"role": "user", "content": "hi"}},
+		"tools": []map[string]any{{"type": "function",
+			"function": map[string]any{"name": "probe"}}},
+	}
+	out := chatToResponses(body)
+	input, _ := out["input"].([]any)
+	if len(input) != 1 {
+		t.Fatalf("typed messages slice must be handled, got %d items", len(input))
+	}
+	tools, _ := out["tools"].([]any)
+	if len(tools) != 1 {
+		t.Fatalf("typed tools slice must be handled, got %d tools", len(tools))
+	}
+}
+
+func TestCodingPlanCovered(t *testing.T) {
+	cases := map[string]bool{
+		"https://maas-api.cn-huabei-1.xf-yun.com/v2":     true,
+		"https://maas-api.cn-huabei-1.xf-yun.com/v1":     true,
+		"https://spark-api-open.xf-yun.com/agent/v1":     false,
+		"https://astronstudio-api-volces-prod.xf-yun.com/model-gateway/v1": false,
+		"": false,
+	}
+	for base, want := range cases {
+		if got := codingPlanCovered(base); got != want {
+			t.Fatalf("codingPlanCovered(%q) = %v, want %v", base, got, want)
+		}
+	}
+}
