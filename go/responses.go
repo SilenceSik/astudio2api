@@ -135,6 +135,21 @@ func chatToResponses(body map[string]any) map[string]any {
 			out["tools"] = tools
 		}
 	}
+	// tool_choice 形状不同：chat 是 {"type":"function","function":{"name":..}}，
+	// responses 是 {"type":"function","name":..}；字符串枚举两边通用。
+	if tc, ok := body["tool_choice"]; ok {
+		switch t := tc.(type) {
+		case string:
+			out["tool_choice"] = t
+		case map[string]any:
+			if fn, ok := t["function"].(map[string]any); ok && fn["name"] != nil {
+				out["tool_choice"] = map[string]any{"type": "function", "name": fn["name"]}
+			}
+		}
+	}
+	if v, ok := body["parallel_tool_calls"]; ok {
+		out["parallel_tool_calls"] = v
+	}
 	return out
 }
 
@@ -195,13 +210,23 @@ func responsesToChat(raw []byte, requestedModel string) ([]byte, error) {
 		finish = "tool_calls"
 	}
 
-	usage := map[string]any{}
+	usage := map[string]any{"prompt_tokens": 0, "completion_tokens": 0, "total_tokens": 0}
 	if u, ok := resp["usage"].(map[string]any); ok {
 		in := u["input_tokens"]
 		outTokens := u["output_tokens"]
+		if in == nil {
+			in = 0
+		}
+		if outTokens == nil {
+			outTokens = 0
+		}
+		total := sumNumbers(in, outTokens)
+		if total == nil {
+			total = 0
+		}
 		usage["prompt_tokens"] = in
 		usage["completion_tokens"] = outTokens
-		usage["total_tokens"] = sumNumbers(in, outTokens)
+		usage["total_tokens"] = total
 	}
 
 	id, _ := resp["id"].(string)
@@ -209,11 +234,17 @@ func responsesToChat(raw []byte, requestedModel string) ([]byte, error) {
 	if v, ok := resp["created_at"].(float64); ok {
 		created = int64(v)
 	}
+	// 回显调用方传入的模型名；没有则退回上游返回的 model。
+	// 上游返回的是内部代号（xopglm52），直接透出去会让客户端的模型名对不上。
+	displayModel := requestedModel
+	if displayModel == "" {
+		displayModel = model
+	}
 	out := map[string]any{
 		"id":      "chatcmpl-" + id,
 		"object":  "chat.completion",
 		"created": created,
-		"model":   model,
+		"model":   displayModel,
 		"choices": []any{map[string]any{
 			"index":         0,
 			"message":       msg,
@@ -316,10 +347,13 @@ func streamResponsesToChat(src io.Reader, model string, w io.Writer) error {
 									return eerr
 								}
 							}
-						case "response.completed":
+						case "response.completed", "response.incomplete":
 							finish := "stop"
 							if toolIndex >= 0 {
 								finish = "tool_calls"
+							} else if ev["type"] == "response.incomplete" {
+								// 被 max_output_tokens 截断：必须显式收尾，否则客户端见到的是空结束。
+								finish = "length"
 							}
 							if eerr := emit(map[string]any{}, finish); eerr != nil {
 								return eerr

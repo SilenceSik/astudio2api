@@ -143,3 +143,67 @@ func TestStreamResponsesToChat(t *testing.T) {
 		t.Fatalf("missing [DONE]: %s", out)
 	}
 }
+
+func TestChatToResponsesToolChoice(t *testing.T) {
+	body := map[string]any{
+		"model": "glm-5.2",
+		"messages": []any{map[string]any{"role": "user", "content": "查天气"}},
+		"tool_choice": map[string]any{"type": "function",
+			"function": map[string]any{"name": "weather"}},
+		"parallel_tool_calls": false,
+	}
+	out := chatToResponses(body)
+	tc, ok := out["tool_choice"].(map[string]any)
+	if !ok {
+		t.Fatalf("tool_choice should be flattened, got %v", out["tool_choice"])
+	}
+	if tc["name"] != "weather" || tc["type"] != "function" {
+		t.Fatalf("unexpected tool_choice: %v", tc)
+	}
+	if _, exists := tc["function"]; exists {
+		t.Fatalf("responses tool_choice must not nest under function")
+	}
+	if out["parallel_tool_calls"] != false {
+		t.Fatalf("parallel_tool_calls should carry over")
+	}
+	// 字符串枚举应原样透传
+	out2 := chatToResponses(map[string]any{"model": "x", "tool_choice": "required"})
+	if out2["tool_choice"] != "required" {
+		t.Fatalf("string tool_choice should pass through, got %v", out2["tool_choice"])
+	}
+}
+
+func TestResponsesToChatUsageFallback(t *testing.T) {
+	raw := []byte(`{"id":"c1","model":"xopglm52","output":[{"type":"message","content":[{"text":"hi"}]}]}`)
+	out, err := responsesToChat(raw, "glm-5.2")
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got map[string]any
+	json.Unmarshal(out, &got)
+	usage := got["usage"].(map[string]any)
+	if usage["prompt_tokens"] == nil || usage["completion_tokens"] == nil || usage["total_tokens"] == nil {
+		t.Fatalf("usage fields must not be null: %v", usage)
+	}
+	if got["model"] != "glm-5.2" {
+		t.Fatalf("should echo requested model name, got %v", got["model"])
+	}
+}
+
+func TestStreamIncompleteMapsToLength(t *testing.T) {
+	sse := strings.Join([]string{
+		"event: response.output_text.delta",
+		`data: {"type":"response.output_text.delta","delta":"半句"}`,
+		"",
+		"event: response.incomplete",
+		`data: {"type":"response.incomplete"}`,
+		"",
+	}, "\n")
+	var b strings.Builder
+	if err := streamResponsesToChat(strings.NewReader(sse), "glm-5.2", &b); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(b.String(), `"finish_reason":"length"`) {
+		t.Fatalf("incomplete should map to length: %s", b.String())
+	}
+}

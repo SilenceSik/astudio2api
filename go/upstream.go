@@ -579,7 +579,14 @@ func (u *Upstream) Chat(ctx context.Context, body map[string]any) (*http.Respons
 }
 
 // Responses 发起 responses 请求。
+//
+// responses 模式的账号必须走它自己的 model-gateway：configs 下发的 base_url
+// 指向 maas-api（没有 /responses 路由），照抄会 404。
 func (u *Upstream) Responses(ctx context.Context, body map[string]any) (*http.Response, error) {
+	if u.responsesMode() {
+		base := strings.TrimRight(u.responsesBaseURL(), "/")
+		return u.doJSON(ctx, base+"/responses", u.account.Bearer(), body)
+	}
 	url, key := u.target(body, "/responses")
 	return u.doJSON(ctx, url, key, body)
 }
