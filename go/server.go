@@ -24,6 +24,10 @@ type httpClient struct {
 func newHTTPClient() *httpClient {
 	return &httpClient{HTTP: &http.Client{
 		Transport: &http.Transport{
+			// 账号级出口：按实例进程读 HTTP(S)_PROXY / NO_PROXY。
+			// 多实例部署时每个实例挂一条隧道，即实现每号独立出口。
+			// 支持 socks5:// 与 http:// 两种 scheme（Go 标准库原生支持 socks5）。
+			Proxy:               http.ProxyFromEnvironment,
 			DialContext:         (&net.Dialer{Timeout: 30 * time.Second}).DialContext,
 			MaxIdleConns:        128,
 			MaxIdleConnsPerHost: 32,

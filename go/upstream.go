@@ -566,7 +566,14 @@ func (u *Upstream) target(body map[string]any, suffix string) (string, string) {
 }
 
 // Chat 发起对话请求；调用方负责关闭 resp.Body。
+//
+// 账号若配置 upstreamMode=responses（Astron Coding Plan 订购只在 Responses
+// 通道有权限），这里做一次 chat→responses 转换，并把结果翻回 chat 形状，
+// 上层无需感知上游用的是哪种协议。
 func (u *Upstream) Chat(ctx context.Context, body map[string]any) (*http.Response, error) {
+	if u.responsesMode() {
+		return u.chatViaResponses(ctx, body)
+	}
 	url, key := u.target(body, "/chat/completions")
 	return u.doJSON(ctx, url, key, body)
 }
