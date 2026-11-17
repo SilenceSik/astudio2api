@@ -46,7 +46,8 @@ type Upstream struct {
 func newUpstream(a *Account, c *http.Client) *Upstream {
 	// 预置全量已知目录（而非对外标准集）：这里管「认不认识这个模型名」，
 	// 对外暴露的收窄由 Gateway.unionModels 单独负责。
-	return &Upstream{account: a, client: c, models: aliasModels()}
+	// 账号若配了 proxy，这里给它一份独立出口的连接池（其余账号不受影响）。
+	return &Upstream{account: a, client: clientForAccount(c, a), models: aliasModels()}
 }
 
 func (u *Upstream) Models() []Model {

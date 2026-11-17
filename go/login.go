@@ -147,6 +147,21 @@ func LoginAndAddAccount(ctx context.Context, cfg Config, cl *http.Client,
 		return nil, fmt.Errorf("账号 %s 已存在（加 --overwrite 覆盖）", name)
 	}
 
+	// 重新登录会重写整个账号文件。这里把「与登录无关但属于该账号的运营配置」
+	// 先读出来保留，否则一次重登就把出口代理 / 通道模式清掉了（CPA 也踩过这个）。
+	preserved := map[string]any{}
+	if raw, rerr := os.ReadFile(dest); rerr == nil {
+		var old map[string]any
+		if json.Unmarshal(raw, &old) == nil {
+			for _, k := range []string{"proxy", "proxy_url", "proxy-url",
+				"upstreamMode", "responsesBaseURL", "mobile", "remark"} {
+				if v, ok := old[k]; ok && v != nil && v != "" {
+					preserved[k] = v
+				}
+			}
+		}
+	}
+
 	a := &Account{Name: name, Path: dest, Raw: map[string]any{
 		"accountId":    accountID,
 		"uid":          accountID,
@@ -156,6 +171,9 @@ func LoginAndAddAccount(ctx context.Context, cfg Config, cl *http.Client,
 		"loginMethod":  "password",
 		"loggedInAt":   time.Now().UTC().Format("2006-01-02T15:04:05.000Z"),
 	}}
+	for k, v := range preserved {
+		a.Raw[k] = v
+	}
 
 	// 验活 + 取准入 bearer。缺 bearer 的账号池子会直接过滤掉，所以必须拿到。
 	up := newUpstream(a, cl)
