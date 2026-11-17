@@ -716,16 +716,78 @@ func (u *Upstream) chatViaResponses(ctx context.Context, body map[string]any) (*
 	// event: response.failed 发出来。若不在写响应头之前拦住，我们只能回
 	// 「200 + 一帧错误」，而 new-api 不认这种帧 —— 记成空回成功，
 	// 既不降温也不换渠道。所以这里提前判一次，把错误变成真 HTTP 400。
-	br := bufio.NewReaderSize(resp.Body, 64*1024)
-	guard := time.AfterFunc(30*time.Second, func() { _ = resp.Body.Close() })
-	consumed, first, detail, perr := peekFirstEvent(br)
-	guard.Stop()
-	if perr != nil {
-		resp.Body.Close()
-		return nil, perr
+	//
+	// 另：invalid_prompt 并不稳定 —— 同一份 payload 直接重打一次常能过。
+	// 所以这里重试一次再定性，避免把偶发拒绝当成永久失败抛给上层。
+	var (
+		br       *bufio.Reader
+		consumed []byte
+		detail   string
+		ok       bool
+	)
+	for attempt := 0; attempt < 2; attempt++ {
+		if attempt > 0 {
+			resp.Body.Close()
+			logf("[%s] 上游 %s，原样重试一次", u.account.Name, detail)
+			r2, err2 := u.doJSON(ctx, url, key, conv)
+			if err2 != nil {
+				return nil, err2
+			}
+			resp = r2
+			if resp.StatusCode >= 400 {
+				raw, _ := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
+				resp.Body.Close()
+				detail = strings.TrimSpace(string(raw))
+				continue
+			}
+		}
+		br = bufio.NewReaderSize(resp.Body, 64*1024)
+		guard := time.AfterFunc(30*time.Second, func() { _ = resp.Body.Close() })
+		var first string
+		var perr error
+		consumed, first, detail, perr = peekFirstEvent(br)
+		guard.Stop()
+		if perr != nil {
+			resp.Body.Close()
+			return nil, perr
+		}
+		if first != "failed" {
+			ok = true
+			break
+		}
 	}
-	if first == "failed" {
-		resp.Body.Close()
+	if !ok {
+		if resp != nil {
+			resp.Body.Close()
+		}
+		// 第二次机会：池里可能混着已失效的 id（上游按 id 查库，实测同批里
+		// 有两个 38 分钟前签发的 id 就已不能用）。领一个新 id，把历史里的
+		// call_id 全量换成它再打一次；成功则把这些旧 id 从台账剔除。
+		if fresh, merr := u.mintCallID(ctx, mid, scope); merr == nil && fresh != "" {
+			oldIDs := collectToolCallIDs(body)
+			retryConv := chatToResponses(body, func(string) string { return fresh })
+			if r3, e3 := u.doJSON(ctx, url, key, retryConv); e3 == nil {
+				br3 := bufio.NewReaderSize(r3.Body, 64*1024)
+				guard3 := time.AfterFunc(30*time.Second, func() { _ = r3.Body.Close() })
+				c3, f3, d3, p3 := peekFirstEvent(br3)
+				guard3.Stop()
+				if p3 == nil && f3 != "failed" {
+					if v := getIDVault(); v != nil {
+						v.Invalidate(scope, oldIDs)
+					}
+					resp, br, consumed, conv = r3, br3, c3, retryConv
+					ok = true
+				} else {
+					r3.Body.Close()
+					if d3 != "" {
+						detail = d3
+					}
+				}
+			}
+		}
+	}
+	if !ok {
+		dumpFailedPayload(scope, mid, detail, conv)
 		return plainErrorResponse(http.StatusBadRequest, detail), nil
 	}
 
@@ -888,6 +950,12 @@ func (u *Upstream) toolIDBridge(ctx context.Context, body map[string]any, scope,
 // 上游只在它自己发 function_call 时才签发 id，所以这里发一条最小请求，
 // 用 tool_choice 强制它调用哑工具，再从返回体里取 call_id。
 func (u *Upstream) primeCallID(ctx context.Context, mid, scope string) error {
+	_, err := u.mintCallID(ctx, mid, scope)
+	return err
+}
+
+// mintCallID 领一个真 id 并返回它（同时也记进台账）。
+func (u *Upstream) mintCallID(ctx context.Context, mid, scope string) (string, error) {
 	probe := map[string]any{
 		"model": mid,
 		"input": []any{map[string]any{"role": "user", "content": "调用 astudio_probe，参数留空。"}},
@@ -909,19 +977,19 @@ func (u *Upstream) primeCallID(ctx context.Context, mid, scope string) error {
 	url := strings.TrimRight(u.responsesBaseURL(), "/") + "/responses"
 	resp, err := u.doJSON(ctx, url, key, probe)
 	if err != nil {
-		return err
+		return "", err
 	}
 	defer resp.Body.Close()
 	raw, rerr := io.ReadAll(io.LimitReader(resp.Body, 1<<20))
 	if rerr != nil {
-		return rerr
+		return "", rerr
 	}
 	if resp.StatusCode >= 400 {
-		return fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
+		return "", fmt.Errorf("HTTP %d: %s", resp.StatusCode, strings.TrimSpace(string(raw)))
 	}
 	var out map[string]any
 	if err := json.Unmarshal(raw, &out); err != nil {
-		return err
+		return "", err
 	}
 	for _, item := range anySlice(out["output"]) {
 		m, _ := item.(map[string]any)
@@ -932,8 +1000,8 @@ func (u *Upstream) primeCallID(ctx context.Context, mid, scope string) error {
 			if v := getIDVault(); v != nil {
 				v.Harvest(scope, id)
 			}
-			return nil
+			return id, nil
 		}
 	}
-	return fmt.Errorf("返回体里没有 function_call")
+	return "", fmt.Errorf("返回体里没有 function_call")
 }

@@ -21,6 +21,7 @@ package main
 
 import (
 	"encoding/json"
+	"fmt"
 	"os"
 	"path/filepath"
 	"sync"
@@ -286,4 +287,86 @@ func collectToolCallIDs(body map[string]any) []string {
 		}
 	}
 	return out
+}
+
+// dumpFailedPayload 把上游 400 时的**转换后请求体**落到 dump 目录，用于事后定位。
+// 代理层的 capture 只留 requestBody 的压缩预览（体积对不上原件），
+// 复现一次 400 需要真 payload，所以这里单独存一份，只保留最近 20 份。
+func dumpFailedPayload(scope, model, detail string, payload map[string]any) {
+	v := getIDVault()
+	if v == nil {
+		return
+	}
+	dir := filepath.Join(filepath.Dir(v.path), "dump")
+	if err := os.MkdirAll(dir, 0o755); err != nil {
+		return
+	}
+	rec := map[string]any{
+		"time":    time.Now().Format(time.RFC3339),
+		"scope":   scope,
+		"model":   model,
+		"detail":  detail,
+		"payload": payload,
+	}
+	raw, err := json.Marshal(rec)
+	if err != nil {
+		return
+	}
+	name := fmt.Sprintf("%d-%s.json", time.Now().UnixNano(), sanitizeFilePart(model))
+	if err := os.WriteFile(filepath.Join(dir, name), raw, 0o600); err != nil {
+		return
+	}
+	if entries, derr := os.ReadDir(dir); derr == nil && len(entries) > 20 {
+		for i := 0; i < len(entries)-20; i++ {
+			_ = os.Remove(filepath.Join(dir, entries[i].Name()))
+		}
+	}
+	logf("[%s] 上游 400，已存请求体 → %s/%s", scope, dir, name)
+}
+
+func sanitizeFilePart(s string) string {
+	out := make([]rune, 0, len(s))
+	for _, r := range s {
+		switch r {
+		case '/', '\\', ' ', ':':
+			out = append(out, '_')
+		default:
+			out = append(out, r)
+		}
+	}
+	return string(out)
+}
+
+// Invalidate 把一批真 id 从池里剔除：上游按 id 查库，池里可能混进已失效的
+// （实测同批里两个 38 分钟前签发的 id 单独使用就 400，其余同批次正常）。
+// 剔除后粘性绑定仍指向它们也没关系 —— 失败重试路径会整体换新 id。
+func (v *idVault) Invalidate(scope string, ids []string) {
+	if v == nil || len(ids) == 0 {
+		return
+	}
+	dead := map[string]bool{}
+	for _, id := range ids {
+		if id != "" {
+			dead[id] = true
+		}
+	}
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.ensureLocked()
+	pool := v.st.Pools[scope]
+	kept := pool[:0]
+	removed := 0
+	for _, rec := range pool {
+		if dead[rec.ID] {
+			removed++
+			continue
+		}
+		kept = append(kept, rec)
+	}
+	if removed == 0 {
+		return
+	}
+	v.st.Pools[scope] = kept
+	v.saveLocked()
+	logf("[%s] 台账剔除 %d 个失效 id", scope, removed)
 }
