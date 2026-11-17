@@ -96,6 +96,10 @@ systemctl daemon-reload && systemctl enable --now astudio2api
 /opt/astudio2api/bin/astudio2api accounts login --account <手机号>
 ```
 
+新号不用先装客户端 —— `login` 会自动补调一次 `tenant-app/v2/init-app` 初始化
+Studio 用户并下发模型目录（幂等，老号无副作用）。少了这步，`bot/models/configs`
+会返回空清单，账号被判定「没有模型」拒收。
+
 或在本地加好后上传（账号 JSON 是自包含的）：
 
 ```bash
@@ -128,6 +132,18 @@ export ASTUDIO_HOST_URL=http://<docker 网关 IP>:8788
 export NEWAPI_GROUPS=<你的分组>          # 默认 openai
 bash deploy/register_channel.sh          # 幂等：同名渠道存在则只更新
 ```
+
+### 8) Web 控制台与账号出口（可选）
+
+浏览器打开 `http://<网关地址>:8788/ui` 就是内置控制台：账号健康、积分分段与到期、
+模型数、出口地址（userinfo 已脱敏）、今日签到、最近错误；按钮可刷新 / 同步全部 /
+立即签到 / 热重载。
+
+- 页面本身**不鉴权、不含数据**，数据全部由浏览器带 `Bearer` 调 `/admin/*`，
+  key 只存本机 `localStorage`（`a2a_key`）—— 所以对外暴露前必须设 `ASTUDIO_API_KEY`
+- 需要多账号各走各的 IP 时，在账号 JSON 最外层加 `proxy`
+  （`http` / `https` / `socks5` / `socks5h`），详见 README「账号级出口代理」；
+  没配的账号仍走 `HTTP(S)_PROXY`，行为与旧版一致
 
 ## 四级验证（逐级收紧）
 

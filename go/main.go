@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-const version = "2.0.0"
+const version = "2.1.0"
 
 func usage() {
 	fmt.Print(`astudio2api —— 把讯飞 AStudio 客户端账号池变成 OpenAI 兼容 API

@@ -23,6 +23,9 @@
 |---|---|---|
 | **对外暴露的模型清单** | ① `go/config.go` `builtinModels()` ② `astudio/consts.py` `BUILTIN_MODELS` ③ 渠道 `channels.models` ④ `abilities` 派生表 ⑤ `channels.test_model` ⑥ README/DEPLOY 的模型表 | ①漏→两侧口径不一；③④漏→`分组 X 下模型 Y 无可用渠道`；⑤漏→渠道测试恒红 |
 | **模型别名解析** | `go/config.go` `aliasModels()`（**解析面要保持全量**，比暴露面宽） | 收窄解析面 = 回退，本来能调的变成 404 |
+| **JWT / 鉴权口径** | `go/jwt.go`（`FetchModelBearer` / `jwtNeedsRefresh`）+ `go/responses.go` 取票顺序 + `go/upstream.go` 的 `responsesMode` 分支 + Python 版对应实现 | 混用两套凭证 → Responses 全 401；只改一处 → chat 通、responses 挂（或反过来） |
+| **账号级出口代理** | `go/proxy.go`（`proxySpecOf` / `clientForAccount`）+ 账号 JSON 的 `proxy` 字段 + `upstream.go` 里每一处取 client 的地方 | 漏一处 → 该账号仍走默认出口，IP 隔离**静默失效**，日志上看不出来 |
+| **Web 控制台** | `go/webui.go`（`//go:embed`）+ `go/webui.html` + `server.go` 的两条路由 | 只改 html 不重新编译 → 打进去的还是旧页面 |
 | **调度冷却参数** | `go/config.go` 顶部常量 + `astudio/consts.py` 对应值 | 两侧行为分叉，Python 版变成误导 |
 | **签到逻辑** | 两侧实现 + 回归测试；**测试别硬编码日期**，用 `CheckinDay()` / `checkin_day()` | 测试随宿主时区飘，CI（UTC）红而本机绿 |
 | **渠道分组 / 优先级** | `channels."group"` / `priority` **和** `abilities."group"` | abilities 不同步 → 新分组下无可用渠道 |
@@ -101,8 +104,21 @@ accountId / uid / token / ssoSessionId / modelBearerToken / banned / loginMethod
 
 - 最少只需 `ssoSessionId` 一个 cookie 就能换取上游 `modelBearerToken`
 - 按 `accountId` 去重，同一账号重复导入只更新不新增
-- `token` / `ssoSessionId` / `modelBearerToken` 属敏感字段；`accounts/` 与 `state.json`
+- `token` / `ssoSessionId` / `modelBearerToken` / `jwt` 属敏感字段；`accounts/` 与 `state.json`
   **必须留在 `.gitignore` 里**，绝不要 `git add -f`
+
+**两套凭证，各打一条通道 —— 这是最容易混淆的一处：**
+
+| 字段 | 来源 | 长相 | 只对哪条通道有效 |
+|---|---|---|---|
+| `api_key`（`Model.APIKey`，configs 下发） | `GET bot/models/configs` | 65 字符 | MaaS `/chat/completions` |
+| `jwt`（也认 `clientToken` / `client_token`） | `POST auth/bearer-token` → `data.modelBearerToken` | 155 字符 JWT，`exp` 约 3 年 | model-gateway `/responses` |
+
+- 拿 `api_key` 打 responses → `401 apikey not found`；反过来拿 `jwt` 打 chat → `401 API_KEY_DISABLED`
+- JWT **不是客户端自签**：asar 里唯一的 HMAC 密钥只用于那串 2 段会话令牌，HS256 自签实测不匹配
+- `jwtNeedsRefresh` 按 `exp` 判，**剩余不足 24 小时才重取**；每次换票 `iat` 都变，别把它当稳定值
+- 重新登录会**保留**账号的运营配置：`proxy` / `upstreamMode` / `responsesBaseURL` / `mobile` / `remark`
+- 极小可跑条件：**只要 `ssoSessionId` 一个 cookie**，不装客户端也能换票、走 Responses 通道
 
 ---
 
@@ -149,6 +165,12 @@ systemctl restart astudio2api
 | 思维链模型返回空正文 | 请求参数 | 没给 `reasoning_effort:"none"` 或 token 预算不足 |
 | 模型名解析不出 | `aliasModels()` | 解析面被误收窄 |
 | 单账号限流 | 账号数 / sticky 亲和 | 账号少且同一会话粘在同一账号 |
+| Responses 报 `401 apikey not found` | `responses.go` 取票顺序 | 拿 `api_key` 打了 model-gateway，这里该用 `jwt` |
+| chat 报 `401 API_KEY_DISABLED` | 同上 | 反过来：拿 `jwt` 打了 MaaS |
+| 新号登录成功但「没有模型」 | `bot/models/configs` 返回条数 | 漏了 `init-app`，账号没初始化 Studio 用户（`accounts login` 已内置） |
+| `/ui` 打开还是旧页面 | 有没有重新 `go build` | 改的是 `webui.html`，embed 在编译期固化 |
+| 某账号出口 IP 不是预期 | 账号 JSON 有没有 `proxy` | 字段名写歪了，代码只认 `proxy` / `proxy_url` / `proxy-url` |
+| UI 整页空白 | 浏览器 localStorage 有没有 `a2a_key` | 网关设了 `ASTUDIO_API_KEY` 但页面没填，`/admin/*` 全 401 |
 
 ---
 
@@ -166,6 +188,9 @@ systemctl restart astudio2api
 journalctl -u astudio2api -n 50 --no-pager -o cat
 curl -s :8788/health
 ```
+
+Web 控制台：`GET /ui`、`GET /admin/ui`（静态页，**本身不鉴权、不含数据**，
+数据仍走下面这些 `/admin/*`，Bearer 由浏览器带）。
 
 管理端点（都需 `ASTUDIO_API_KEY`）：
 `/admin/accounts`、`/admin/accounts/import`、`/admin/accounts/login`、
@@ -187,3 +212,10 @@ CLI：`serve` / `accounts list|import|login|remove` / `models` / `credits` /
   调度器按「快过期优先」排序，尽量先烧要过期的额度。
 - 受限模型依赖账号订购权限，调用未订购的模型会 403 并冷却该模型 30 分钟。
 - `spark-x`（Spark-X2-Flash）走上游自家端点，响应多包一层 `status/sid`。
+- **Responses 通道与 chat 是两套鉴权、两套地址**：`upstreamMode: "responses"` 的账号走
+  model-gateway（`astronstudio-api-volces-prod.xf-yun.com/model-gateway/v1`，账号可写
+  `responsesBaseURL` 覆盖）。`spark` 系不在该网关的模型表里、会 404 —— 实现会自动退回
+  该模型自己的 chat 通道再打一次。
+- **图片输入按模型能力判定**：多模态 `content` 按 parts 透传（`text` → `input_text`、
+  `image_url` → `input_image`）。支持视觉的（`deepseek-v4.1-flash`）正常识别，不支持的
+  由上游回 `empty_image_file`。转换层不再静默丢图 —— 丢图让模型对着文字瞎答比报错更糟。
