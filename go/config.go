@@ -112,12 +112,16 @@ func builtinModels() []Model {
 		return Model{ID: id, Name: name, Multiplier: mult, BaseURL: base}
 	}
 	return []Model{
+		mk("spark-x2.6", "Spark-X2.6", nil, DefaultMaasBase),
+		mk("spark-x2.6-4b", "Spark-X2.6-Lite", nil, DefaultMaasBase),
 		mk("spark-x2.5", "Spark-X2.5", nil, DefaultMaasBase),
 		mk("xopglm52", "GLM-5.2", "x2.0", DefaultMaasBase),
 		// 客户端真实目录里的 slug 是 xopdeepseekv4pro0813（带日期后缀）。
 		// 不要再把裸 slug xopdeepseekv4pro 也放进表里：它和这条映射到同一个
 		// 友好名，会在 /v1/models 里产出两个同 id 的条目。
 		mk("xopdeepseekv4pro0813", "DeepSeek-V4-Pro", "x2.0", DefaultMaasBase),
+		// V4.1-Flash 实测支持图片输入（Responses 通道），V4-Flash（0731）不支持。
+		mk("xdeepseek-flash-in", "DeepSeek-V4.1-Flash", "x1.0", DefaultMaasBase),
 		mk("xopdsv4flash0731in", "DeepSeek-V4-Flash", "x1.0", DefaultMaasBase),
 	}
 }

@@ -43,6 +43,37 @@ func contentText(v any) string {
 	}
 }
 
+// contentParts 把 chat 的 content 转成 Responses 的 parts。
+// 纯文本走字符串（简单可靠）；含图片时返回 input_text / input_image 数组。
+// Responses 的 input_image 与 chat 的 image_url 结构相同，只需换 type 名。
+func contentParts(v any) (parts []any, plain string) {
+	arr := anySlice(v)
+	if len(arr) == 0 {
+		return nil, contentText(v)
+	}
+	var b strings.Builder
+	hasImage := false
+	for _, raw := range arr {
+		p, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		switch p["type"] {
+		case "text", "input_text":
+			t, _ := p["text"].(string)
+			b.WriteString(t)
+			parts = append(parts, map[string]any{"type": "input_text", "text": t})
+		case "image_url", "input_image":
+			hasImage = true
+			parts = append(parts, map[string]any{"type": "input_image", "image_url": p["image_url"]})
+		}
+	}
+	if !hasImage {
+		return nil, b.String()
+	}
+	return parts, b.String()
+}
+
 // anySlice 把任意 slice 形态统一成 []any。
 // JSON 解码得到 []any，而 Go 内部调用方常直接构造 []map[string]any —— 只认前者会
 // 让 messages/tools 被当成空（上游随即 400 invalid_prompt）。
@@ -77,7 +108,7 @@ func chatToResponses(body map[string]any) map[string]any {
 			continue
 		}
 		role, _ := m["role"].(string)
-		text := contentText(m["content"])
+		parts, text := contentParts(m["content"])
 
 		switch role {
 		case "system", "developer":
@@ -109,12 +140,24 @@ func chatToResponses(body map[string]any) map[string]any {
 					})
 				}
 			}
-			if text != "" {
-				input = append(input, map[string]any{"role": "assistant", "content": text})
+			if text != "" || parts != nil {
+				item := map[string]any{"role": "assistant"}
+				if parts != nil {
+					item["content"] = parts
+				} else {
+					item["content"] = text
+				}
+				input = append(input, item)
 			}
 		default:
-			if text != "" {
-				input = append(input, map[string]any{"role": role, "content": text})
+			if text != "" || parts != nil {
+				item := map[string]any{"role": role}
+				if parts != nil {
+					item["content"] = parts
+				} else {
+					item["content"] = text
+				}
+				input = append(input, item)
 			}
 		}
 	}
@@ -446,12 +489,6 @@ func (u *Upstream) chatViaResponses(ctx context.Context, body map[string]any) (*
 	if !codingPlanCovered(entry.BaseURL) {
 		url, key := u.target(body, "/chat/completions")
 		return u.doJSON(ctx, url, key, body)
-	}
-	// Responses 通道实测不接收图片（data URL、公网 URL、裸 base64 全回 empty_image_file）。
-	// 静默丢图会让模型对着纯文字瞎答，比直接报错更糟，所以这里显式拒绝。
-	if hasImageInput(body) {
-		return plainErrorResponse(http.StatusBadRequest,
-			"该账号的 Responses 通道暂不支持图片输入；请改用文本，或换支持视觉的渠道"), nil
 	}
 	conv := chatToResponses(body)
 	base := u.responsesBaseURL()

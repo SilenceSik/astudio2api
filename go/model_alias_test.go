@@ -68,7 +68,7 @@ func newAliasGateway(t *testing.T) (*Gateway, string) {
 	cfg := Config{APIKey: key, AccountsDir: filepath.Join(dir, "accounts"),
 		StatePath: filepath.Join(dir, "state.json")}
 	p := newPool(cfg, newLedger(cfg.StatePath))
-	a := acct("a", "u1", "13800138000")
+	a := acct("a", "u1", "18600000001")
 	p.slots = []*Slot{{Account: a, Up: newUpstream(a, http.DefaultClient)}}
 	return &Gateway{cfg: cfg, pool: p}, key
 }
@@ -122,10 +122,13 @@ func TestModelsEndpointExposesOnlyStandardSet(t *testing.T) {
 	}
 
 	want := map[string]string{
-		"spark-x2.5":        "spark-x2.5",
-		"glm-5.2":           "xopglm52",
-		"deepseek-v4-pro":   "xopdeepseekv4pro0813",
-		"deepseek-v4-flash": "xopdsv4flash0731in",
+		"spark-x2.6":          "spark-x2.6",
+		"spark-x2.6-lite":     "spark-x2.6-4b",
+		"spark-x2.5":          "spark-x2.5",
+		"glm-5.2":             "xopglm52",
+		"deepseek-v4-pro":     "xopdeepseekv4pro0813",
+		"deepseek-v4.1-flash": "xdeepseek-flash-in",
+		"deepseek-v4-flash":   "xopdsv4flash0731in",
 	}
 	got := map[string]string{}
 	for _, m := range out.Data {
