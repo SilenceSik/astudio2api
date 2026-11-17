@@ -181,6 +181,11 @@ func LoginAndAddAccount(ctx context.Context, cfg Config, cl *http.Client,
 	if _, ierr := up.InitStudioUser(ctx); ierr != nil {
 		return nil, fmt.Errorf("登录成功但初始化 Studio 用户失败: %w", ierr)
 	}
+	// 顺手换一张 model-gateway 票（Responses 通道用）。失败不致命：
+	// 只走 chat 通道的号不需要它。
+	if tok, jerr := up.FetchModelBearer(ctx); jerr == nil && tok != "" {
+		a.Raw["jwt"] = tok
+	}
 	models, err := up.SyncModels(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("登录成功但验活失败: %w", err)
