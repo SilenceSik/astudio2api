@@ -154,7 +154,7 @@ func LoginAndAddAccount(ctx context.Context, cfg Config, cl *http.Client,
 		var old map[string]any
 		if json.Unmarshal(raw, &old) == nil {
 			for _, k := range []string{"proxy", "proxy_url", "proxy-url",
-				"upstreamMode", "responsesBaseURL", "mobile", "remark"} {
+				"upstreamMode", "responsesBaseURL", "mobile", "remark", "jwt", "clientToken"} {
 				if v, ok := old[k]; ok && v != nil && v != "" {
 					preserved[k] = v
 				}

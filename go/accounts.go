@@ -57,6 +57,17 @@ func (a *Account) AccountID() string { return a.str("accountId") }
 func (a *Account) UID() string       { return a.str("uid") }
 func (a *Account) Mobile() string    { return a.str("mobile") }
 func (a *Account) Bearer() string    { return a.str("modelBearerToken") }
+
+// JWT 客户端下发的设备令牌（登录态 JWT）。它只能打 model-gateway（Responses），
+// 打 maas-api 会 401 apikey not found —— 两者是两套鉴权，别混用。
+func (a *Account) JWT() string {
+	for _, k := range []string{"jwt", "clientToken", "client_token"} {
+		if v := a.str(k); v != "" {
+			return v
+		}
+	}
+	return ""
+}
 func (a *Account) Banned() bool {
 	a.mu.RLock()
 	defer a.mu.RUnlock()

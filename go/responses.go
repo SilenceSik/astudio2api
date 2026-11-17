@@ -493,7 +493,12 @@ func (u *Upstream) chatViaResponses(ctx context.Context, body map[string]any) (*
 	conv := chatToResponses(body)
 	base := u.responsesBaseURL()
 	url := strings.TrimRight(base, "/") + "/responses"
-	key := u.account.Bearer()
+	// 优先用客户端 JWT：它才是 model-gateway 认的凭证；
+	// configs 下发的 api_key 只在 MaaS（chat）通道有效。
+	key := u.account.JWT()
+	if key == "" {
+		key = u.account.Bearer()
+	}
 
 	resp, err := u.doJSON(ctx, url, key, conv)
 	if err != nil {
