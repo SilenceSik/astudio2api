@@ -128,6 +128,9 @@ func (g *Gateway) Handler() http.Handler {
 	mux.HandleFunc("/admin/credits/refresh", g.handleCreditsRefresh)
 	mux.HandleFunc("/admin/points", g.handlePoints)
 	mux.HandleFunc("/admin/models", g.handleAdminModels)
+	// 内置控制台：静态页，不鉴权；数据仍走 /admin/*（需要 Bearer）。
+	mux.HandleFunc("/ui", g.handleWebUI)
+	mux.HandleFunc("/admin/ui", g.handleWebUI)
 
 	return mux
 }
@@ -153,7 +156,7 @@ func (g *Gateway) handleHealth(w http.ResponseWriter, r *http.Request) {
 	}
 	out := map[string]any{
 		"status": st, "accounts": len(slots), "healthy": healthy,
-		"models": len(g.unionModels()),
+		"models": len(g.unionModels()), "version": version,
 	}
 	if len(dead) > 0 {
 		out["needs_relogin"] = dead
@@ -314,6 +317,7 @@ func (g *Gateway) accountSummaries() []map[string]any {
 			"healthy": s.Healthy(), "cooldown_s": round1(cd), "last_error": lastErr,
 			"credits": credits, "segments": segCount, "soonest_expiry": expiry,
 			"checkin": ck, "banned": s.Account.Banned(),
+			"proxy": maskedProxy(s.Account),
 		})
 	}
 	return out

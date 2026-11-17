@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>AStudio2API 控制台</title>
+<style>
+  :root{
+    --bg:#0d1117; --panel:#161b22; --panel2:#1c2128; --line:#30363d;
+    --fg:#e6edf3; --dim:#8b949e; --acc:#3fb950; --warn:#d29922; --err:#f85149; --blue:#58a6ff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--fg);
+       font:14px/1.5 -apple-system,"Segoe UI","Microsoft YaHei",sans-serif}
+  header{display:flex;align-items:center;gap:12px;padding:14px 20px;
+         border-bottom:1px solid var(--line);background:var(--panel);position:sticky;top:0;z-index:5}
+  header h1{font-size:15px;margin:0;font-weight:600;letter-spacing:.3px}
+  header .tag{font-size:12px;color:var(--dim);border:1px solid var(--line);
+              padding:1px 7px;border-radius:20px}
+  main{padding:18px 20px 60px;max-width:1180px;margin:0 auto}
+  .bar{display:flex;flex-wrap:wrap;gap:10px;align-items:center;margin-bottom:16px}
+  button{background:var(--panel2);color:var(--fg);border:1px solid var(--line);
+         border-radius:6px;padding:6px 12px;cursor:pointer;font-size:13px}
+  button:hover{border-color:var(--blue);color:var(--blue)}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  button.primary{background:#1f6feb;border-color:#1f6feb;color:#fff}
+  button.primary:hover{background:#2f81f7;color:#fff}
+  input{background:var(--panel2);border:1px solid var(--line);border-radius:6px;
+        color:var(--fg);padding:6px 10px;font-size:13px;min-width:260px}
+  .stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin-bottom:18px}
+  .stat{background:var(--panel);border:1px solid var(--line);border-radius:8px;padding:12px 14px}
+  .stat .k{font-size:12px;color:var(--dim)}
+  .stat .v{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums;margin-top:2px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+        padding:14px 16px;margin-bottom:12px}
+  .card h3{margin:0 0 10px;font-size:14px;display:flex;align-items:center;gap:8px}
+  .dot{width:8px;height:8px;border-radius:50%;display:inline-block}
+  .ok{background:var(--acc)} .bad{background:var(--err)} .warn{background:var(--warn)}
+  dl{display:grid;grid-template-columns:96px 1fr;gap:4px 12px;margin:0;font-size:13px}
+  dt{color:var(--dim)} dd{margin:0;font-variant-numeric:tabular-nums;word-break:break-all}
+  table{width:100%;border-collapse:collapse;font-size:13px}
+  th,td{text-align:left;padding:6px 8px;border-bottom:1px solid var(--line)}
+  th{color:var(--dim);font-weight:500}
+  td.mono{font-family:ui-monospace,Consolas,monospace;font-size:12px}
+  details{margin-top:10px}
+  summary{color:var(--dim);cursor:pointer;font-size:12px}
+  pre{background:var(--bg);border:1px solid var(--line);border-radius:6px;
+      padding:10px;overflow:auto;max-height:320px;font-size:12px;margin:8px 0 0}
+  .muted{color:var(--dim)}
+  .toast{position:fixed;right:18px;bottom:18px;background:var(--panel2);
+         border:1px solid var(--line);border-radius:8px;padding:10px 14px;
+         font-size:13px;opacity:0;transition:opacity .25s;max-width:420px}
+  .toast.show{opacity:1}
+  .row2{display:grid;grid-template-columns:1fr 1fr;gap:12px}
+  @media(max-width:760px){.row2{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<header>
+  <h1>AStudio2API 控制台</h1>
+  <span class="tag" id="ver">—</span>
+  <span class="tag" id="clock">—</span>
+</header>
+
+<main>
+  <div class="bar">
+    <input id="key" type="password" placeholder="ASTUDIO_API_KEY（保存在本机浏览器）">
+    <button class="primary" id="btn-refresh">刷新</button>
+    <button id="btn-sync">同步全部模型</button>
+    <button id="btn-checkin">立即签到</button>
+    <button id="btn-reload">热重载账号</button>
+    <span class="muted" id="status">未连接</span>
+  </div>
+
+  <div class="stats">
+    <div class="stat"><div class="k">账号</div><div class="v" id="s-accounts">—</div></div>
+    <div class="stat"><div class="k">健康</div><div class="v" id="s-healthy">—</div></div>
+    <div class="stat"><div class="k">模型（对外）</div><div class="v" id="s-models">—</div></div>
+    <div class="stat"><div class="k">积分合计</div><div class="v" id="s-credits">—</div></div>
+    <div class="stat"><div class="k">最近到期</div><div class="v" id="s-expiry" style="font-size:14px">—</div></div>
+  </div>
+
+  <div class="row2">
+    <div id="accounts"></div>
+    <div class="card">
+      <h3>对外模型</h3>
+      <div id="models" class="muted">—</div>
+      <details><summary>全部可用模型（按账号）</summary><pre id="raw-models">—</pre></details>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>原始响应</h3>
+    <details><summary>展开 /health、/admin/accounts、/admin/credits</summary>
+      <pre id="raw">—</pre>
+    </details>
+  </div>
+</main>
+
+<div class="toast" id="toast"></div>
+
+<script>
+const $ = id => document.getElementById(id);
+const store = {
+  get key(){ return localStorage.getItem('a2a_key') || ''; },
+  set key(v){ localStorage.setItem('a2a_key', v || ''); }
+};
+let lastData = null;
+
+function toast(msg, ms=2600){
+  const t = $('toast'); t.textContent = msg; t.classList.add('show');
+  clearTimeout(t._t); t._t = setTimeout(()=>t.classList.remove('show'), ms);
+}
+
+async function api(path, opts={}){
+  const key = store.key;
+  if(!key){ throw new Error('先填 API key'); }
+  const r = await fetch(path, {
+    ...opts,
+    headers: {'Authorization':'Bearer '+key, 'Content-Type':'application/json', ...(opts.headers||{})}
+  });
+  const text = await r.text();
+  let data; try{ data = JSON.parse(text); }catch{ data = text; }
+  if(!r.ok){ throw new Error((data && data.error && data.error.message) || ('HTTP '+r.status)); }
+  return data;
+}
+
+function fmtTime(ts){
+  if(!ts) return '—';
+  const d = new Date(ts*1000), n = new Date();
+  const sameDay = d.toDateString() === n.toDateString();
+  const hh = String(d.getHours()).padStart(2,'0'), mm = String(d.getMinutes()).padStart(2,'0');
+  return sameDay ? `今天 ${hh}:${mm}` : `${d.getMonth()+1}-${d.getDate()} ${hh}:${mm}`;
+}
+function fmtNum(n){ return (n==null?'—':n.toLocaleString('zh-CN')); }
+function esc(s){ return String(s??'').replace(/[&<>"]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+
+function render(data){
+  const {health, accounts, credits, models} = data;
+  $('s-accounts').textContent = health?.accounts ?? accounts?.count ?? '—';
+  $('s-healthy').textContent = health?.healthy ?? '—';
+  $('s-models').textContent = models?.external?.length ?? '—';
+  const total = credits?.total ?? (accounts?.accounts||[]).reduce((a,b)=>a+(b.credits||0),0);
+  $('s-credits').textContent = fmtNum(total);
+
+  const exps = (accounts?.accounts||[]).map(a=>a.soonest_expiry).filter(Boolean);
+  $('s-expiry').textContent = exps.length ? fmtTime(Math.min(...exps)) : '—';
+
+  const ext = models?.external || [];
+  $('models').innerHTML = ext.length
+    ? ext.map(m=>`<span class="tag" style="border:1px solid var(--line);padding:1px 7px;border-radius:20px;margin:0 6px 6px 0;display:inline-block;font-size:12px">${esc(m)}</span>`).join('')
+    : '<span class="muted">无</span>';
+  $('raw-models').textContent = JSON.stringify(models?.providers || models, null, 2);
+
+  const acc = accounts?.accounts || [];
+  $('accounts').innerHTML = acc.map(a=>{
+    const c = (credits?.accounts||[]).find(x=>x.identity===a.identity) || null;
+    const segs = c?.segments || [];
+    const gen = segs.reduce((x,s)=>x+(s.remaining||0),0);
+    // segments 只覆盖 member/buy/activity；星火积分在 /admin/points 的
+    // sparkActivityBalance 里，这里不重复猜，需要时点开账号详情看原始 JSON。
+    const segDetail = segs.filter(s=>s.remaining>0)
+      .map(s=>`${s.source} ${fmtNum(s.remaining)}`).join(' · ');
+    const check = a.checkin || {};
+    const state = a.healthy ? 'ok' : 'bad';
+    return `<div class="card">
+      <h3><span class="dot ${state}"></span>${esc(a.name)} <span class="muted" style="font-weight:400">${esc(a.uid||'')}</span>
+        ${a.banned?'<span class="tag" style="color:var(--err);border-color:var(--err)">封禁</span>':''}
+        ${a.cooldown_s?`<span class="tag" style="color:var(--warn);border-color:var(--warn)">冷却 ${a.cooldown_s}s</span>`:''}
+      </h3>
+      <dl>
+        <dt>积分</dt><dd>${fmtNum(gen)}${segDetail?` <span class="muted">（${segDetail}）</span>`:''}</dd>
+        <dt>到期</dt><dd>${fmtTime(a.soonest_expiry)}</dd>
+        <dt>模型</dt><dd>${a.models ?? '—'}${a.models_synced?' <span class="muted">已同步</span>':' <span style="color:var(--warn)">未同步</span>'}</dd>
+        <dt>出口</dt><dd class="mono">${a.proxy? esc(a.proxy) : '<span class="muted">默认（环境）</span>'}</dd>
+        <dt>今日签到</dt><dd>${check.ok? `成功 +${check.claimed ?? 0}${check.detail?` <span class="muted">${esc(check.detail)}</span>`:''}` : '<span class="muted">未签</span>'}</dd>
+        ${a.last_error?`<dt>最近错误</dt><dd style="color:var(--err)">${esc(a.last_error)}</dd>`:''}
+      </dl>
+    </div>`;
+  }).join('') || '<div class="card muted">没有账号</div>';
+
+  $('raw').textContent = JSON.stringify(data, null, 2);
+}
+
+async function refresh(){
+  try{
+    // 一个端点失败不该让整页空白：断言全部成功，失败的降级成空对象。
+    const settled = await Promise.allSettled([
+      api('/health'), api('/admin/accounts'), api('/admin/credits'), api('/admin/models')
+    ]);
+    const pick = (i, fallback) => settled[i].status === 'fulfilled' ? settled[i].value : (fallback ?? null);
+    const [health, accounts, credits, models] = [pick(0), pick(1), pick(2), pick(3)];
+    const failed = settled.filter(s => s.status === 'rejected');
+    if (failed.length) toast(failed.length + ' 个端点失败：' + failed[0].reason.message, 4000);
+    // /admin/models 里再多取一份「对外标准集」：用 /v1/models 更适合展示对外清单
+    let external = [];
+    try{
+      const v1 = await fetch('/v1/models', {headers:{'Authorization':'Bearer '+store.key}});
+      if(v1.ok){ const d = await v1.json(); external = (d.data||[]).map(m=>m.id); }
+    }catch{}
+    lastData = {health, accounts, credits, models:{...models, external}};
+    render(lastData);
+    $('status').textContent = '已连接 · ' + new Date().toLocaleTimeString('zh-CN');
+  }catch(e){
+    $('status').textContent = '连接失败：' + e.message;
+    toast('刷新失败：' + e.message, 4000);
+  }
+}
+
+async function action(label, path, body){
+  try{
+    const r = await api(path, {method:'POST', body: body?JSON.stringify(body):undefined});
+    toast(label + ' 完成：' + (r.ok===false? JSON.stringify(r) : 'ok'));
+    await refresh();
+  }catch(e){
+    toast(label + ' 失败：' + e.message, 4000);
+  }
+}
+
+$('key').value = store.key;
+$('key').addEventListener('change', e=>{ store.key = e.target.value.trim(); refresh(); });
+$('btn-refresh').onclick = refresh;
+$('btn-sync').onclick = ()=>action('同步', '/admin/sync');
+$('btn-checkin').onclick = ()=>action('签到', '/admin/checkin?force=true');
+$('btn-reload').onclick = ()=>action('热重载', '/admin/reload');
+
+fetch('/health').then(r=>r.json()).then(h=>{ $('ver').textContent = 'v' + (h.version||'?'); }).catch(()=>{});
+setInterval(()=>{ $('clock').textContent = new Date().toLocaleTimeString('zh-CN'); }, 1000);
+if(store.key){ refresh(); } else { $('status').textContent = '请填入 API key'; }
+</script>
+</body>
+</html>

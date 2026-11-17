@@ -44,6 +44,18 @@ func normalizeProxySpec(spec string) (*url.URL, bool) {
 	return u, true
 }
 
+// maskedProxy 返回可安全展示的出口地址（隐藏 userinfo，避免把口令带进 UI/日志）。
+func maskedProxy(a *Account) string {
+	u, ok := normalizeProxySpec(proxySpecOf(a))
+	if !ok {
+		return ""
+	}
+	if u.User != nil {
+		u.User = url.User("***")
+	}
+	return u.String()
+}
+
 // clientForAccount 为带 proxy 的账号克隆一份 Transport（独立连接池 + 独立出口）。
 // 未配置 proxy 时返回共享 client，行为与之前完全一致。
 func clientForAccount(base *http.Client, a *Account) *http.Client {

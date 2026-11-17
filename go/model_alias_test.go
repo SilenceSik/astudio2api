@@ -124,7 +124,6 @@ func TestModelsEndpointExposesOnlyStandardSet(t *testing.T) {
 	want := map[string]string{
 		"spark-x2.6":          "spark-x2.6",
 		"spark-x2.6-lite":     "spark-x2.6-4b",
-		"spark-x2.5":          "spark-x2.5",
 		"glm-5.2":             "xopglm52",
 		"deepseek-v4-pro":     "xopdeepseekv4pro0813",
 		"deepseek-v4.1-flash": "xdeepseek-flash-in",
@@ -252,8 +251,8 @@ func TestModelsEndpointExposesFriendlyAliases(t *testing.T) {
 	if seen["deepseek-v4-pro"] != "xopdeepseekv4pro0813" {
 		t.Errorf("应暴露 deepseek-v4-pro → xopdeepseekv4pro0813，实得 %q", seen["deepseek-v4-pro"])
 	}
-	if seen["spark-x2.5"] != "spark-x2.5" {
-		t.Errorf("应暴露 spark-x2.5，实得 %q", seen["spark-x2.5"])
+	if _, gone := seen["spark-x2.5"]; gone {
+		t.Error("Spark-X2.5 已下架，不该再出现在对外清单里")
 	}
 	if _, bad := seen["xopglm52"]; bad {
 		t.Error("对外 id 不该再用内部代号")

@@ -114,7 +114,6 @@ func builtinModels() []Model {
 	return []Model{
 		mk("spark-x2.6", "Spark-X2.6", nil, DefaultMaasBase),
 		mk("spark-x2.6-4b", "Spark-X2.6-Lite", nil, DefaultMaasBase),
-		mk("spark-x2.5", "Spark-X2.5", nil, DefaultMaasBase),
 		mk("xopglm52", "GLM-5.2", "x2.0", DefaultMaasBase),
 		// 客户端真实目录里的 slug 是 xopdeepseekv4pro0813（带日期后缀）。
 		// 不要再把裸 slug xopdeepseekv4pro 也放进表里：它和这条映射到同一个
@@ -147,6 +146,7 @@ func aliasModels() []Model {
 	}
 	out := builtinModels()
 	return append(out,
+		mk("spark-x2.5", "Spark-X2.5", nil, DefaultMaasBase),
 		mk("astronclaw-auto", "Auto", nil, DefaultMaasBase),
 		mk("xsparkx2agent", "Spark-X2-Agent", "x2.0", DefaultMaasBase),
 		mk("spark-x", "Spark-X2-Flash", "x0.5",
