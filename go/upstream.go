@@ -596,7 +596,13 @@ func (u *Upstream) Chat(ctx context.Context, body map[string]any) (*http.Respons
 func (u *Upstream) Responses(ctx context.Context, body map[string]any) (*http.Response, error) {
 	if u.responsesMode() {
 		base := strings.TrimRight(u.responsesBaseURL(), "/")
-		return u.doJSON(ctx, base+"/responses", u.account.Bearer(), body)
+		// 与 chatViaResponses 一致：model-gateway 认 JWT，不认 configs 下发的 api_key
+		// （用 api_key 会得到 401 API_KEY_DISABLED / apikey not found）。
+		key := u.account.JWT()
+		if key == "" {
+			key = u.account.Bearer()
+		}
+		return u.doJSON(ctx, base+"/responses", key, body)
 	}
 	url, key := u.target(body, "/responses")
 	return u.doJSON(ctx, url, key, body)
