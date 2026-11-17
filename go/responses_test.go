@@ -145,31 +145,34 @@ func TestStreamResponsesToChat(t *testing.T) {
 }
 
 func TestChatToResponsesToolChoice(t *testing.T) {
+	// 这条上游（model-gateway /responses）只认 "auto" / "none" / 缺省。
+	// 实测 2026-11-17：传 "required" 或对象形式都 400 invalid_prompt，
+	// 所以转换层要把它们丢掉，而不是照 OpenAI 规范去「翻形状」。
 	body := map[string]any{
-		"model": "glm-5.2",
+		"model":    "glm-5.2",
 		"messages": []any{map[string]any{"role": "user", "content": "查天气"}},
 		"tool_choice": map[string]any{"type": "function",
 			"function": map[string]any{"name": "weather"}},
 		"parallel_tool_calls": false,
 	}
 	out := chatToResponses(body)
-	tc, ok := out["tool_choice"].(map[string]any)
-	if !ok {
-		t.Fatalf("tool_choice should be flattened, got %v", out["tool_choice"])
-	}
-	if tc["name"] != "weather" || tc["type"] != "function" {
-		t.Fatalf("unexpected tool_choice: %v", tc)
-	}
-	if _, exists := tc["function"]; exists {
-		t.Fatalf("responses tool_choice must not nest under function")
+	if v, exists := out["tool_choice"]; exists {
+		t.Fatalf("object tool_choice must be dropped for this upstream, got %v", v)
 	}
 	if out["parallel_tool_calls"] != false {
 		t.Fatalf("parallel_tool_calls should carry over")
 	}
-	// 字符串枚举应原样透传
+	// "required" 上游不认，丢掉
 	out2 := chatToResponses(map[string]any{"model": "x", "tool_choice": "required"})
-	if out2["tool_choice"] != "required" {
-		t.Fatalf("string tool_choice should pass through, got %v", out2["tool_choice"])
+	if v, exists := out2["tool_choice"]; exists {
+		t.Fatalf("required must be dropped, got %v", v)
+	}
+	// "auto" / "none" 原样透传
+	for _, want := range []string{"auto", "none"} {
+		out3 := chatToResponses(map[string]any{"model": "x", "tool_choice": want})
+		if out3["tool_choice"] != want {
+			t.Fatalf("%s should pass through, got %v", want, out3["tool_choice"])
+		}
 	}
 }
 
@@ -246,9 +249,9 @@ func TestHasImageInput(t *testing.T) {
 
 func TestCodingPlanCovered(t *testing.T) {
 	cases := map[string]bool{
-		"https://maas-api.cn-huabei-1.xf-yun.com/v2":     true,
-		"https://maas-api.cn-huabei-1.xf-yun.com/v1":     true,
-		"https://spark-api-open.xf-yun.com/agent/v1":     false,
+		"https://maas-api.cn-huabei-1.xf-yun.com/v2":                       true,
+		"https://maas-api.cn-huabei-1.xf-yun.com/v1":                       true,
+		"https://spark-api-open.xf-yun.com/agent/v1":                       false,
 		"https://astronstudio-api-volces-prod.xf-yun.com/model-gateway/v1": false,
 		"": false,
 	}

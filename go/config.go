@@ -10,12 +10,12 @@ import (
 	"time"
 )
 
-// 常量（协议来自对 AStudio 3.4.4 客户端的静态分析）
+// 常量（协议来自对 AStudio 3.4.4 客户端的静态分析，2026-11-17 与 3.6.4 对齐）
 const (
 	DefaultMaasBase = "https://maas-api.cn-huabei-1.xf-yun.com/v1"
 	// 客户端身份头 —— 缺了会被上游拒绝 (code 11001001)
 	ClientTypeWin = "21"
-	StudioVersion = "3.4.4"
+	StudioVersion = "3.6.4"
 
 	// 服务端下发的模型清单接口（cookie 认证，用它换 api_key）
 	ModelsConfigPath = "bot/models/configs"

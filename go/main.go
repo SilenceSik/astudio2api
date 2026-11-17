@@ -15,7 +15,7 @@ import (
 	"time"
 )
 
-const version = "2.0.0"
+const version = "2.2.0"
 
 func usage() {
 	fmt.Print(`astudio2api —— 把讯飞 AStudio 客户端账号池变成 OpenAI 兼容 API
@@ -53,6 +53,8 @@ func main() {
 	cmd := os.Args[1]
 	args := os.Args[2:]
 	cfg := loadConfig()
+	// 工具调用 id 台账：与 state.json 同目录，进程启动即装载。
+	setIDVault(newIDVault(cfg.StatePath))
 
 	var code int
 	switch cmd {
