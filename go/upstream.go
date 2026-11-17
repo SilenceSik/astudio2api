@@ -193,6 +193,16 @@ func dataOf(j map[string]any) map[string]any {
 // 模型目录
 // ---------------------------------------------------------------------------
 
+// InitStudioUser 调 tenant-app/v2/init-app 初始化 Studio 用户。
+//
+// 这是新号能不能用的分水岭（2026-11-17 实测）：从未初始化过的账号，登录后
+// bot/models/configs 返回空清单 → 账号池把它当「没有模型」拒收。
+// 调一次 init-app（返回 studioUserCreated=true）后，模型立刻下发 9 个。
+// 老号再调只是返回 studioUserCreated=false，幂等无害（它同时是签到口）。
+func (u *Upstream) InitStudioUser(ctx context.Context) (map[string]any, error) {
+	return u.studioPost(ctx, "tenant-app/v2/init-app", map[string]any{})
+}
+
 // SyncModels 拉服务端模型清单（同时验证 cookie），并取回各模型 api_key。
 func (u *Upstream) SyncModels(ctx context.Context) ([]Model, error) {
 	j, err := u.studioGet(ctx, ModelsConfigPath)

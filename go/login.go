@@ -177,6 +177,10 @@ func LoginAndAddAccount(ctx context.Context, cfg Config, cl *http.Client,
 
 	// 验活 + 取准入 bearer。缺 bearer 的账号池子会直接过滤掉，所以必须拿到。
 	up := newUpstream(a, cl)
+	// 新号必须先初始化 Studio 用户，否则 configs 返回空模型清单（见 InitStudioUser）。
+	if _, ierr := up.InitStudioUser(ctx); ierr != nil {
+		return nil, fmt.Errorf("登录成功但初始化 Studio 用户失败: %w", ierr)
+	}
 	models, err := up.SyncModels(ctx)
 	if err != nil {
 		return nil, fmt.Errorf("登录成功但验活失败: %w", err)
