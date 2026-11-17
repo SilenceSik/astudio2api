@@ -403,6 +403,39 @@ func streamResponsesToChat(src io.Reader, model string, w io.Writer) error {
 	return err
 }
 
+// hasImageInput 判断请求里是否带了图片输入（chat 的 image_url / responses 的 input_image）。
+func hasImageInput(body map[string]any) bool {
+	for _, raw := range anySlice(body["messages"]) {
+		m, ok := raw.(map[string]any)
+		if !ok {
+			continue
+		}
+		for _, part := range anySlice(m["content"]) {
+			p, ok := part.(map[string]any)
+			if !ok {
+				continue
+			}
+			switch p["type"] {
+			case "image_url", "input_image", "image":
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// plainErrorResponse 构造一个只带 body 的错误响应，交给上层 errFromResponse 读。
+func plainErrorResponse(status int, msg string) *http.Response {
+	b, _ := json.Marshal(map[string]any{
+		"error": map[string]any{"message": msg, "type": "upstream_error"},
+	})
+	return &http.Response{
+		StatusCode: status,
+		Header:     http.Header{"Content-Type": []string{"application/json"}},
+		Body:       io.NopCloser(bytes.NewReader(b)),
+	}
+}
+
 // chatViaResponses 用 Responses 通道完成一次 chat 请求，返回 chat 形状的响应。
 //
 // 只有走 maas-api 的模型才受 Coding Plan 通道覆盖；同一个账号的 spark 系列模型
@@ -413,6 +446,12 @@ func (u *Upstream) chatViaResponses(ctx context.Context, body map[string]any) (*
 	if !codingPlanCovered(entry.BaseURL) {
 		url, key := u.target(body, "/chat/completions")
 		return u.doJSON(ctx, url, key, body)
+	}
+	// Responses 通道实测不接收图片（data URL、公网 URL、裸 base64 全回 empty_image_file）。
+	// 静默丢图会让模型对着纯文字瞎答，比直接报错更糟，所以这里显式拒绝。
+	if hasImageInput(body) {
+		return plainErrorResponse(http.StatusBadRequest,
+			"该账号的 Responses 通道暂不支持图片输入；请改用文本，或换支持视觉的渠道"), nil
 	}
 	conv := chatToResponses(body)
 	base := u.responsesBaseURL()

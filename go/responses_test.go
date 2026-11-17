@@ -227,6 +227,23 @@ func TestChatToResponsesTypedSlices(t *testing.T) {
 	}
 }
 
+func TestHasImageInput(t *testing.T) {
+	withImage := map[string]any{"messages": []any{map[string]any{
+		"role": "user", "content": []any{
+			map[string]any{"type": "text", "text": "这是什么"},
+			map[string]any{"type": "image_url", "image_url": map[string]any{"url": "data:image/png;base64,xx"}},
+		}}}}
+	if !hasImageInput(withImage) {
+		t.Fatal("image_url content should be detected")
+	}
+	if hasImageInput(map[string]any{"messages": []any{map[string]any{"role": "user", "content": "纯文本"}}}) {
+		t.Fatal("plain text must not be flagged")
+	}
+	if hasImageInput(map[string]any{}) {
+		t.Fatal("empty body must not be flagged")
+	}
+}
+
 func TestCodingPlanCovered(t *testing.T) {
 	cases := map[string]bool{
 		"https://maas-api.cn-huabei-1.xf-yun.com/v2":     true,
