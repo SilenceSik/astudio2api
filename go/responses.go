@@ -152,6 +152,8 @@ func chatToResponses(body map[string]any, rewrite ...func(string) string) map[st
 
 	// 上游硬限：input 里最多 9 个 function_call 项（实测第 10 个就 400 invalid_prompt）。
 	// 超过就把最旧的若干轮折成一条文本摘要，保留最近 9 个原样回放。
+	// 注意：折叠本身能把数量严格压到 ≤9，这个上界是可靠的 —— 撞 400 的请求
+	// 不是折叠没生效，而是折叠后 9 个 call_id 里有已失效的（见 idvault.Invalidate）。
 	const maxToolCalls = 9
 	var callOrder []string
 	for _, raw := range msgs {
@@ -773,7 +775,19 @@ func (u *Upstream) chatViaResponses(ctx context.Context, body map[string]any) (*
 				guard3.Stop()
 				if p3 == nil && f3 != "failed" {
 					if v := getIDVault(); v != nil {
-						v.Invalidate(scope, oldIDs)
+						// oldIDs 是客户端 id，池里存的是真 id —— 只传客户端 id
+						// 一个都剔不掉，死真 id 会留在池里继续发给别人。
+						// 所以先把这一轮实际用到的真 id 也算出来，一起剔。
+						deadIDs := append([]string{}, oldIDs...)
+						for _, c := range oldIDs {
+							if r := rewrite(c); r != "" && r != c {
+								deadIDs = append(deadIDs, r)
+							}
+						}
+						// 先清旧绑定，再把它们整体钉到新 id 上。
+						// 顺序不能反：Invalidate 会按客户端键删绑定，后 Rebind 才留得住。
+						v.Invalidate(scope, deadIDs)
+						v.Rebind(scope, oldIDs, fresh)
 					}
 					resp, br, consumed, conv = r3, br3, c3, retryConv
 					ok = true
@@ -925,12 +939,20 @@ func (u *Upstream) toolIDBridge(ctx context.Context, body map[string]any, scope,
 		return nil, harvest
 	}
 	mapping, missing := v.Assign(scope, clients)
-	for attempt := 0; attempt < 2 && len(missing) > 0; attempt++ {
+	// prime 一次只领到一个真 id；缺 N 个就该领 N 次。
+	// 原来固定 2 次，缺 11 个时剩下的全被 Backfill 绑到同一个真 id 上 ——
+	// 十几个 function_call 共用一条 call_id，上游按 id 查库会直接判无效。
+	for attempt := 0; attempt < 16 && len(missing) > 0; attempt++ {
+		before := len(missing)
 		if err := u.primeCallID(ctx, mid, scope); err != nil {
 			logf("[%s] prime 真 call_id 失败: %v", u.account.Name, err)
 			break
 		}
 		mapping, missing = v.Assign(scope, clients)
+		if len(missing) >= before {
+			// 领到了但分配不动（池满或都被占用），再试也是空转
+			break
+		}
 	}
 	if len(missing) > 0 {
 		mapping = v.Backfill(scope, missing, mapping)

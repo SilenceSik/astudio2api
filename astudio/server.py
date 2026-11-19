@@ -168,7 +168,7 @@ async def lifespan(_: FastAPI):
         await POOL.aclose()
 
 
-app = FastAPI(title="astudio2api", version="2.2.1", lifespan=lifespan)
+app = FastAPI(title="astudio2api", version="2.2.2", lifespan=lifespan)
 
 
 # ---------------------------------------------------------------------------

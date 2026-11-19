@@ -24,6 +24,7 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"strings"
 	"sync"
 	"time"
 )
@@ -339,7 +340,7 @@ func sanitizeFilePart(s string) string {
 
 // Invalidate 把一批真 id 从池里剔除：上游按 id 查库，池里可能混进已失效的
 // （实测同批里两个 38 分钟前签发的 id 单独使用就 400，其余同批次正常）。
-// 剔除后粘性绑定仍指向它们也没关系 —— 失败重试路径会整体换新 id。
+// 剔除时必须连粘性绑定一起清，否则下一轮 Assign 会把死 id 原样再发回去。
 func (v *idVault) Invalidate(scope string, ids []string) {
 	if v == nil || len(ids) == 0 {
 		return
@@ -363,10 +364,55 @@ func (v *idVault) Invalidate(scope string, ids []string) {
 		}
 		kept = append(kept, rec)
 	}
-	if removed == 0 {
+	v.st.Pools[scope] = kept
+	// 只从池里删远远不够：粘性绑定仍指向这些死 id，而且仍在 TTL 内，
+	// 下一次请求 Assign 会原样把它们再发回上游 —— 于是 400 一轮一轮地复发。
+	// 绑定必须一起清掉，让下一轮重新领真 id。
+	//
+	// 注意 removed 可能是 0（池里那份早被上一轮删掉了，绑定却还在），
+	// 所以清理绑定不能挂在 removed>0 上，必须无条件执行。
+	purged := 0
+	for k, b := range v.st.Bindings {
+		if dead[b.Real] || dead[bindClient(k)] {
+			delete(v.st.Bindings, k)
+			purged++
+		}
+	}
+	v.saveLocked()
+	logf("[%s] 台账剔除 %d 个失效 id（同时清理 %d 条绑定）", scope, removed, purged)
+}
+
+// Rebind 把一批客户端 id 钉到同一个真 id 上。
+//
+// 用途：上游 reject 后换新 id 重试成功时，必须把这个新 id 记成粘性映射，
+// 否则下一轮请求又拿着历史里的旧 id 去撞同一个 400 —— 客户端历史不会变，
+// 不记映射就永远在自己和自己打架。
+func (v *idVault) Rebind(scope string, clients []string, real string) {
+	if v == nil || real == "" || len(clients) == 0 {
 		return
 	}
-	v.st.Pools[scope] = kept
-	v.saveLocked()
-	logf("[%s] 台账剔除 %d 个失效 id", scope, removed)
+	v.mu.Lock()
+	defer v.mu.Unlock()
+	v.ensureLocked()
+	now := time.Now().Unix()
+	n := 0
+	for _, client := range clients {
+		if client == "" || client == real {
+			continue
+		}
+		v.st.Bindings[bindKey(scope, client)] = idBinding{Real: real, At: now}
+		n++
+	}
+	if n > 0 {
+		v.saveLocked()
+		logf("[%s] 台账重绑 %d 条绑定 → 新真 id", scope, n)
+	}
+}
+
+// bindClient 从绑定键里取回客户端 id 部分（键形如 scope|client）。
+func bindClient(key string) string {
+	if i := strings.LastIndex(key, "|"); i >= 0 && i+1 < len(key) {
+		return key[i+1:]
+	}
+	return key
 }
